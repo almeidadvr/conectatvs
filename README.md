@@ -1,16 +1,18 @@
-# Conecta Sign Player TV 0.3.1
+# Conecta Mídia 0.4.0
 
-Player de digital signage para Android TV / Google TV, integrado ao Conecta Sign Desktop.
+Player de mídia digital para Android, tablets, Android TV e Google TV, integrado ao painel Conecta Sign Desktop.
 
 ## O que esta versão inclui
 
-- Projeto Android pronto para abrir no Android Studio.
+- Nome exibido do aplicativo: Conecta Mídia.
+- Ícone com a logo oficial enviada pelo usuário.
+- Banner próprio para Android TV / Google TV.
+- Compatibilidade com tablets Android.
 - Android Gradle Plugin 8.7.3 + Gradle 8.9.
 - Java/JVM 17.
 - compileSdk/targetSdk 35 e minSdk 26.
-- Launcher para Android TV / Google TV.
-- Ícone e banner próprios do Conecta Sign.
-- Suporte ao controle remoto.
+- Launcher para Android TV / Google TV e Android convencional.
+- Suporte ao controle remoto e toque.
 - Código de pareamento de 6 dígitos.
 - Descoberta do servidor nas portas 8787 a 8797.
 - Vídeos com Media3/ExoPlayer.
@@ -21,4 +23,4 @@ Player de digital signage para Android TV / Google TV, integrado ao Conecta Sign
 
 ## Build automático
 
-Este repositório contém um workflow do GitHub Actions em `.github/workflows/build-apk.yml` para gerar o APK debug automaticamente.
+O workflow em `.github/workflows/build-apk.yml` gera o APK debug automaticamente.
