@@ -71,7 +71,7 @@ new_connect = '''    private fun saveAndConnect() {
 pattern = re.compile(r'    private fun saveAndConnect\(\) \{.*?(?=    private suspend fun connectivityLoop\(\))', re.S)
 if not pattern.search(s):
     raise SystemExit('Intervalo saveAndConnect/resolveServer não encontrado')
-s = pattern.sub(new_connect, s, count=1)
+s = pattern.sub(lambda _: new_connect, s, count=1)
 
 s = s.replace(
 '''    private var imageJob: Job? = null
