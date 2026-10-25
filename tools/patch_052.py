@@ -3,6 +3,110 @@ from pathlib import Path
 p = Path('app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt')
 s = p.read_text(encoding='utf-8')
 
+# Conexão mais robusta: feedback imediato, timeout curto e teste explícito da porta.
+old_connect = '''    private fun saveAndConnect() {
+        val raw = serverInput.text.toString().trim()
+        if (raw.isBlank()) { statusText.text = "Informe o IP do computador."; return }
+        scope.launch {
+            saveServerButton.isEnabled = false
+            statusText.text = "Procurando o Conecta Mídia neste computador..."
+            val found = withContext(Dispatchers.IO) { resolveServer(raw) }
+            saveServerButton.isEnabled = true
+            if (found == null) { statusText.text = "Não encontrei o servidor. Confira o IP e se o console está aberto no Windows."; return@launch }
+            serverUrl = found
+            prefs.edit().putString("server_url", found).apply()
+            serverInput.visibility = View.GONE
+            saveServerButton.visibility = View.GONE
+            settingsButton.visibility = View.VISIBLE
+            statusText.text = "Servidor encontrado. Aguardando pareamento..."
+            launch { connectivityLoop() }
+        }
+    }
+
+    private fun resolveServer(raw: String): String? {
+        val cleaned = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
+        val hasPort = Regex(":\\d+$").containsMatchIn(cleaned)
+        val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8797).map { "http://$cleaned:$it" }
+        var firstHealthy: String? = null
+        for (candidate in candidates) {
+            try {
+                val cfg = getJson("$candidate/api/player/config?pairingCode=$pairingCode")
+                if (cfg.optBoolean("paired")) return candidate
+                val req = Request.Builder().url("$candidate/api/health").build()
+                client.newCall(req).execute().use { if (it.isSuccessful && firstHealthy == null) firstHealthy = candidate }
+            } catch (_: Exception) { }
+        }
+        return firstHealthy
+    }'''
+
+new_connect = '''    private fun saveAndConnect() {
+        val raw = serverInput.text.toString().trim()
+        if (raw.isBlank()) {
+            statusText.visibility = View.VISIBLE
+            statusText.text = "Informe o IP do computador."
+            return
+        }
+        scope.launch {
+            saveServerButton.isEnabled = false
+            val oldText = saveServerButton.text
+            saveServerButton.text = "CONECTANDO..."
+            statusText.visibility = View.VISIBLE
+            statusText.text = "Testando conexão com o Conecta Mídia..."
+
+            val result = withContext(Dispatchers.IO) {
+                runCatching { withTimeout(12_000L) { resolveServer(raw) } }
+            }
+
+            saveServerButton.isEnabled = true
+            saveServerButton.text = oldText
+
+            val found = result.getOrNull()
+            if (found == null) {
+                val detail = result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
+                statusText.text = if (detail != null)
+                    "Não consegui conectar. $detail"
+                else
+                    "Não encontrei o servidor. Confira IP, porta, Wi-Fi e Firewall do Windows."
+                return@launch
+            }
+
+            serverUrl = found
+            prefs.edit().putString("server_url", found).apply()
+            serverInput.visibility = View.GONE
+            saveServerButton.visibility = View.GONE
+            settingsButton.visibility = View.VISIBLE
+            statusText.text = "Servidor encontrado em ${found.removePrefix("http://")}. Verificando pareamento..."
+            launch { connectivityLoop() }
+        }
+    }
+
+    private fun resolveServer(raw: String): String? {
+        val cleaned = raw.removePrefix("http://").removePrefix("https://").trim().trimEnd('/')
+        if (cleaned.isBlank()) return null
+        val hasPort = Regex(":\\d+$").containsMatchIn(cleaned)
+        val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8797).map { "http://$cleaned:$it" }
+        var firstHealthy: String? = null
+
+        for (candidate in candidates) {
+            try {
+                // Primeiro confirma que existe um Conecta Mídia nessa porta.
+                val healthReq = Request.Builder().url("$candidate/api/health").build()
+                val healthy = client.newCall(healthReq).execute().use { it.isSuccessful }
+                if (!healthy) continue
+                if (firstHealthy == null) firstHealthy = candidate
+
+                // Em seguida prefere a instância que já reconhece este dispositivo.
+                val cfg = getJson("$candidate/api/player/config?pairingCode=$pairingCode")
+                if (cfg.optBoolean("paired")) return candidate
+            } catch (_: Exception) { }
+        }
+        return firstHealthy
+    }'''
+
+if old_connect not in s:
+    raise SystemExit('Bloco de conexão original não encontrado')
+s = s.replace(old_connect, new_connect)
+
 s = s.replace(
 '''    private var imageJob: Job? = null
     private var syncJob: Job? = null
@@ -67,8 +171,6 @@ old = '''    private fun playItem(index: Int, offsetMs: Long) {
 new = '''    private fun playItem(index: Int, offsetMs: Long) {
         if (activeItems.isEmpty()) return
 
-        // Um único vídeo usa REPEAT_MODE_ONE: o decoder permanece carregado e o loop
-        // recomeça sem desmontar/recriar o PlayerView, reduzindo o quadro preto.
         val singleVideoLoop = activeItems.size == 1 && activeItems[0].kind == "video"
         if (singleVideoLoop && currentIndex == 0 && playbackStarted && player.playbackState != Player.STATE_IDLE) {
             player.repeatMode = Player.REPEAT_MODE_ONE
@@ -154,4 +256,4 @@ s = s.replace(
 '''    override fun onDestroy() { super.onDestroy(); imageJob?.cancel(); syncJob?.cancel(); transitionJob?.cancel(); scope.cancel(); player.release() }''')
 
 p.write_text(s, encoding='utf-8')
-print('Patch 0.5.2 aplicado')
+print('Patch 0.5.3 aplicado')
