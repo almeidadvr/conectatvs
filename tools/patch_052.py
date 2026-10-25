@@ -1,43 +1,8 @@
 from pathlib import Path
+import re
 
 p = Path('app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt')
 s = p.read_text(encoding='utf-8')
-
-# Conexão mais robusta: feedback imediato, timeout curto e teste explícito da porta.
-old_connect = '''    private fun saveAndConnect() {
-        val raw = serverInput.text.toString().trim()
-        if (raw.isBlank()) { statusText.text = "Informe o IP do computador."; return }
-        scope.launch {
-            saveServerButton.isEnabled = false
-            statusText.text = "Procurando o Conecta Mídia neste computador..."
-            val found = withContext(Dispatchers.IO) { resolveServer(raw) }
-            saveServerButton.isEnabled = true
-            if (found == null) { statusText.text = "Não encontrei o servidor. Confira o IP e se o console está aberto no Windows."; return@launch }
-            serverUrl = found
-            prefs.edit().putString("server_url", found).apply()
-            serverInput.visibility = View.GONE
-            saveServerButton.visibility = View.GONE
-            settingsButton.visibility = View.VISIBLE
-            statusText.text = "Servidor encontrado. Aguardando pareamento..."
-            launch { connectivityLoop() }
-        }
-    }
-
-    private fun resolveServer(raw: String): String? {
-        val cleaned = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
-        val hasPort = Regex(":\\d+$").containsMatchIn(cleaned)
-        val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8797).map { "http://$cleaned:$it" }
-        var firstHealthy: String? = null
-        for (candidate in candidates) {
-            try {
-                val cfg = getJson("$candidate/api/player/config?pairingCode=$pairingCode")
-                if (cfg.optBoolean("paired")) return candidate
-                val req = Request.Builder().url("$candidate/api/health").build()
-                client.newCall(req).execute().use { if (it.isSuccessful && firstHealthy == null) firstHealthy = candidate }
-            } catch (_: Exception) { }
-        }
-        return firstHealthy
-    }'''
 
 new_connect = '''    private fun saveAndConnect() {
         val raw = serverInput.text.toString().trim()
@@ -89,23 +54,24 @@ new_connect = '''    private fun saveAndConnect() {
 
         for (candidate in candidates) {
             try {
-                // Primeiro confirma que existe um Conecta Mídia nessa porta.
                 val healthReq = Request.Builder().url("$candidate/api/health").build()
                 val healthy = client.newCall(healthReq).execute().use { it.isSuccessful }
                 if (!healthy) continue
                 if (firstHealthy == null) firstHealthy = candidate
 
-                // Em seguida prefere a instância que já reconhece este dispositivo.
                 val cfg = getJson("$candidate/api/player/config?pairingCode=$pairingCode")
                 if (cfg.optBoolean("paired")) return candidate
             } catch (_: Exception) { }
         }
         return firstHealthy
-    }'''
+    }
 
-if old_connect not in s:
-    raise SystemExit('Bloco de conexão original não encontrado')
-s = s.replace(old_connect, new_connect)
+'''
+
+pattern = re.compile(r'    private fun saveAndConnect\(\) \{.*?(?=    private suspend fun connectivityLoop\(\))', re.S)
+if not pattern.search(s):
+    raise SystemExit('Intervalo saveAndConnect/resolveServer não encontrado')
+s = pattern.sub(new_connect, s, count=1)
 
 s = s.replace(
 '''    private var imageJob: Job? = null
