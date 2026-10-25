@@ -30,9 +30,9 @@
         android:padding="36dp"
         android:background="@drawable/panel_bg">
 
-        <TextView android:id="@+id/titleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CONECTA SIGN" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="32sp" />
-        <TextView android:id="@+id/subtitleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Player para Android TV" android:textColor="#A8BED8" android:textSize="16sp" />
-        <TextView android:id="@+id/codeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Código desta TV" android:textColor="#A8BED8" android:textSize="17sp" />
+        <TextView android:id="@+id/titleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CONECTA MÍDIA" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="32sp" />
+        <TextView android:id="@+id/subtitleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Player de Mídia Digital" android:textColor="#A8BED8" android:textSize="16sp" />
+        <TextView android:id="@+id/codeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Código deste dispositivo" android:textColor="#A8BED8" android:textSize="17sp" />
         <TextView android:id="@+id/codeText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="000 000" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="52sp" android:letterSpacing="0.08" />
         <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Configure o endereço do servidor." android:textColor="#D5E3F2" android:textSize="16sp" android:gravity="center" />
         <EditText android:id="@+id/serverInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:hint="IP do computador. Ex.: 192.168.1.50" android:singleLine="true" android:inputType="textUri" android:textColor="#FFFFFF" android:textColorHint="#7692B2" android:backgroundTint="#6D8CAF" android:padding="12dp" />
