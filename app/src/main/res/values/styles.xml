@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.ConectaSign" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">#071A31</item>
+        <item name="android:colorAccent">#2F7DF6</item>
+    </style>
+</resources>

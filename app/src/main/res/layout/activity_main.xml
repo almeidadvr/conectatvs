@@ -1,0 +1,44 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#071A31">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        app:use_controller="false"
+        app:resize_mode="fit" />
+
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:scaleType="fitCenter"
+        android:background="#000000" />
+
+    <LinearLayout
+        android:id="@+id/statusPanel"
+        android:layout_width="620dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="36dp"
+        android:background="@drawable/panel_bg">
+
+        <TextView android:id="@+id/titleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CONECTA SIGN" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="32sp" />
+        <TextView android:id="@+id/subtitleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Player para Android TV" android:textColor="#A8BED8" android:textSize="16sp" />
+        <TextView android:id="@+id/codeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Código desta TV" android:textColor="#A8BED8" android:textSize="17sp" />
+        <TextView android:id="@+id/codeText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="000 000" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="52sp" android:letterSpacing="0.08" />
+        <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Configure o endereço do servidor." android:textColor="#D5E3F2" android:textSize="16sp" android:gravity="center" />
+        <EditText android:id="@+id/serverInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:hint="IP do computador. Ex.: 192.168.1.50" android:singleLine="true" android:inputType="textUri" android:textColor="#FFFFFF" android:textColorHint="#7692B2" android:backgroundTint="#6D8CAF" android:padding="12dp" />
+        <Button android:id="@+id/saveServerButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="SALVAR E CONECTAR" android:textColor="#FFFFFF" android:textStyle="bold" android:background="@drawable/button_bg" />
+        <Button android:id="@+id/settingsButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="ALTERAR SERVIDOR" android:textColor="#FFFFFF" android:background="@drawable/button_bg" android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/offlineBadge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|end" android:layout_margin="18dp" android:padding="10dp" android:background="#AA000000" android:text="OFFLINE • reproduzindo cache" android:textColor="#FFFFFF" android:textSize="12sp" android:visibility="gone" />
+</FrameLayout>
