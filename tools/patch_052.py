@@ -48,7 +48,7 @@ new_connect = '''    private fun saveAndConnect() {
     private fun resolveServer(raw: String): String? {
         val cleaned = raw.removePrefix("http://").removePrefix("https://").trim().trimEnd('/')
         if (cleaned.isBlank()) return null
-        val hasPort = Regex(":\\d+$").containsMatchIn(cleaned)
+        val hasPort = Regex(":[0-9]+$").containsMatchIn(cleaned)
         val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8797).map { "http://$cleaned:$it" }
         var firstHealthy: String? = null
 
