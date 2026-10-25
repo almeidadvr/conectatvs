@@ -1,77 +1,11 @@
 from pathlib import Path
-import re
 
 p = Path('app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt')
 s = p.read_text(encoding='utf-8')
 
-new_connect = '''    private fun saveAndConnect() {
-        val raw = serverInput.text.toString().trim()
-        if (raw.isBlank()) {
-            statusText.visibility = View.VISIBLE
-            statusText.text = "Informe o IP do computador."
-            return
-        }
-        scope.launch {
-            saveServerButton.isEnabled = false
-            val oldText = saveServerButton.text
-            saveServerButton.text = "CONECTANDO..."
-            statusText.visibility = View.VISIBLE
-            statusText.text = "Testando conexão com o Conecta Mídia..."
-
-            val result = withContext(Dispatchers.IO) {
-                runCatching { withTimeout(12_000L) { resolveServer(raw) } }
-            }
-
-            saveServerButton.isEnabled = true
-            saveServerButton.text = oldText
-
-            val found = result.getOrNull()
-            if (found == null) {
-                val detail = result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
-                statusText.text = if (detail != null)
-                    "Não consegui conectar. $detail"
-                else
-                    "Não encontrei o servidor. Confira IP, porta, Wi-Fi e Firewall do Windows."
-                return@launch
-            }
-
-            serverUrl = found
-            prefs.edit().putString("server_url", found).apply()
-            serverInput.visibility = View.GONE
-            saveServerButton.visibility = View.GONE
-            settingsButton.visibility = View.VISIBLE
-            statusText.text = "Servidor encontrado em ${found.removePrefix("http://")}. Verificando pareamento..."
-            launch { connectivityLoop() }
-        }
-    }
-
-    private fun resolveServer(raw: String): String? {
-        val cleaned = raw.removePrefix("http://").removePrefix("https://").trim().trimEnd('/')
-        if (cleaned.isBlank()) return null
-        val hasPort = Regex(":[0-9]+$").containsMatchIn(cleaned)
-        val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8797).map { "http://$cleaned:$it" }
-        var firstHealthy: String? = null
-
-        for (candidate in candidates) {
-            try {
-                val healthReq = Request.Builder().url("$candidate/api/health").build()
-                val healthy = client.newCall(healthReq).execute().use { it.isSuccessful }
-                if (!healthy) continue
-                if (firstHealthy == null) firstHealthy = candidate
-
-                val cfg = getJson("$candidate/api/player/config?pairingCode=$pairingCode")
-                if (cfg.optBoolean("paired")) return candidate
-            } catch (_: Exception) { }
-        }
-        return firstHealthy
-    }
-
-'''
-
-pattern = re.compile(r'    private fun saveAndConnect\(\) \{.*?(?=    private suspend fun connectivityLoop\(\))', re.S)
-if not pattern.search(s):
-    raise SystemExit('Intervalo saveAndConnect/resolveServer não encontrado')
-s = pattern.sub(lambda _: new_connect, s, count=1)
+# IMPORTANTE: não alterar saveAndConnect() / resolveServer().
+# A rotina de conexão abaixo permanece exatamente a da versão 0.5.1,
+# que foi validada em tablet e Fire TV.
 
 s = s.replace(
 '''    private var imageJob: Job? = null
@@ -222,4 +156,4 @@ s = s.replace(
 '''    override fun onDestroy() { super.onDestroy(); imageJob?.cancel(); syncJob?.cancel(); transitionJob?.cancel(); scope.cancel(); player.release() }''')
 
 p.write_text(s, encoding='utf-8')
-print('Patch 0.5.3 aplicado')
+print('Patch 0.5.4 aplicado sem alterar a conexão da 0.5.1')
