@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -47,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private var activeItems = mutableListOf<PlaylistItem>()
     private var currentIndex = -1
     private var imageJob: Job? = null
+    private var syncJob: Job? = null
     private var playlistVersion = ""
     private var playbackStarted = false
     private var syncAnchorMs = 0L
@@ -61,6 +63,8 @@ class MainActivity : AppCompatActivity() {
         val localPath: String,
         val durationMs: Long
     )
+
+    data class TimedConfig(val json: JSONObject, val offsetMs: Long)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +101,8 @@ class MainActivity : AppCompatActivity() {
         settingsButton.setOnClickListener { showServerSettings() }
 
         loadCachedPlaylist()
+        startLocalSyncLoop()
+
         if (serverUrl.isBlank()) {
             showServerSettings()
         } else {
@@ -114,6 +120,16 @@ class MainActivity : AppCompatActivity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+    }
+
+    private fun startLocalSyncLoop() {
+        syncJob?.cancel()
+        syncJob = scope.launch {
+            while (isActive) {
+                delay(1000)
+                if (playbackStarted && activeItems.isNotEmpty()) syncPlayback(false)
+            }
+        }
     }
 
     private fun saveAndConnect() {
@@ -155,10 +171,10 @@ class MainActivity : AppCompatActivity() {
         while (scope.isActive) {
             if (serverUrl.isBlank()) return
             try {
-                val cfg = withContext(Dispatchers.IO) { getJson("$serverUrl/api/player/config?pairingCode=$pairingCode") }
+                val timed = withContext(Dispatchers.IO) { getTimedConfig("$serverUrl/api/player/config?pairingCode=$pairingCode") }
                 offlineBadge.visibility = View.GONE
-                applyConfig(cfg)
-                if (cfg.optBoolean("paired")) withContext(Dispatchers.IO) { postHeartbeat() }
+                applyConfig(timed.json, timed.offsetMs)
+                if (timed.json.optBoolean("paired")) withContext(Dispatchers.IO) { postHeartbeat() }
             } catch (_: Exception) {
                 if (activeItems.isNotEmpty()) {
                     offlineBadge.visibility = View.VISIBLE
@@ -167,16 +183,31 @@ class MainActivity : AppCompatActivity() {
                     showPairingState("Sem conexão com o servidor. Tentando novamente...")
                 }
             }
-            delay(15_000)
+            delay(5000)
         }
     }
 
-    private suspend fun applyConfig(cfg: JSONObject) {
+    private fun getTimedConfig(url: String): TimedConfig {
+        val wallStart = System.currentTimeMillis()
+        val monoStart = SystemClock.elapsedRealtime()
+        val json = getJson(url)
+        val monoEnd = SystemClock.elapsedRealtime()
+        val rtt = monoEnd - monoStart
+        val localMidpoint = wallStart + (rtt / 2L)
+        val serverTime = json.optLong("serverTimeMs", localMidpoint)
+        return TimedConfig(json, serverTime - localMidpoint)
+    }
+
+    private suspend fun applyConfig(cfg: JSONObject, measuredOffsetMs: Long) {
         if (!cfg.optBoolean("paired")) { showPairingState("Cadastre este código no painel do Conecta Mídia."); return }
-        val serverTime = cfg.optLong("serverTimeMs", System.currentTimeMillis())
-        serverClockOffsetMs = serverTime - System.currentTimeMillis()
+
+        // Suaviza pequenas variações de rede sem deixar um valor antigo dominar.
+        serverClockOffsetMs = if (serverClockOffsetMs == 0L) measuredOffsetMs else
+            ((serverClockOffsetMs * 3L) + measuredOffsetMs) / 4L
+
         val playlist = cfg.optJSONObject("playlist")
         if (playlist == null) { showPairingState("Dispositivo pareado. Aguardando uma playlist..."); return }
+
         syncAnchorMs = cfg.optLong("syncAnchorMs", System.currentTimeMillis() + serverClockOffsetMs)
         val newVersion = playlist.optString("updatedAt")
 
@@ -255,12 +286,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncPlayback(force: Boolean) {
-        if (activeItems.isEmpty()) return
+        if (activeItems.isEmpty() || syncAnchorMs <= 0L) return
         val (targetIndex, targetOffset) = timelinePosition()
         val target = activeItems[targetIndex]
         val sameItem = currentIndex == targetIndex && playbackStarted
+
         if (!force && sameItem) {
-            if (target.kind == "video" && abs(player.currentPosition - targetOffset) > 1500L) player.seekTo(targetOffset)
+            if (target.kind == "video" && player.playbackState != Player.STATE_IDLE) {
+                val drift = abs(player.currentPosition - targetOffset)
+                if (drift > 650L) player.seekTo(targetOffset.coerceAtMost((target.durationMs - 200L).coerceAtLeast(0L)))
+            }
             return
         }
         playItem(targetIndex, targetOffset)
@@ -283,7 +318,7 @@ class MainActivity : AppCompatActivity() {
             playerView.visibility = View.VISIBLE
             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
             player.prepare()
-            player.seekTo(offsetMs.coerceIn(0L, (item.durationMs - 250L).coerceAtLeast(0L)))
+            player.seekTo(offsetMs.coerceIn(0L, (item.durationMs - 200L).coerceAtLeast(0L)))
             player.playWhenReady = true
         } else {
             playerView.visibility = View.GONE
@@ -373,5 +408,5 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onResume() { super.onResume(); enterImmersive() }
-    override fun onDestroy() { super.onDestroy(); imageJob?.cancel(); scope.cancel(); player.release() }
+    override fun onDestroy() { super.onDestroy(); imageJob?.cancel(); syncJob?.cancel(); scope.cancel(); player.release() }
 }
