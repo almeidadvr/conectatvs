@@ -9,9 +9,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
-        android:banner="@drawable/tv_banner"
-        android:label="Conecta Sign Player"
+        android:icon="@drawable/ic_launcher_brand"
+        android:banner="@drawable/tv_banner_brand"
+        android:label="Conecta Mídia"
         android:theme="@style/Theme.ConectaSign"
         android:usesCleartextTraffic="true">
 
