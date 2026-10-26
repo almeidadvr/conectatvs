@@ -24,6 +24,9 @@ jobs:
       - name: Aplicar marca d'água 0.7.1
         run: python tools/patch_071_watermark.py
 
+      - name: Aplicar suporte a logo específica 0.8.2
+        run: python tools/patch_082_watermark_url.py
+
       - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
@@ -45,11 +48,11 @@ jobs:
 
       - name: Renomear APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-0.7.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-0.8.2-debug.apk
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Conecta-Midia-0.7.1-APK
-          path: Conecta-Midia-0.7.1-debug.apk
+          name: Conecta-Midia-0.8.2-APK
+          path: Conecta-Midia-0.8.2-debug.apk
           if-no-files-found: error
