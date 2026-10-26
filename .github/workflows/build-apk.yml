@@ -36,6 +36,9 @@ jobs:
       - name: Aplicar tela visual completa 0.8.6.1
         run: python tools/patch_0861_player_ui.py
 
+      - name: Aplicar sincronização e UI responsiva 0.8.7
+        run: python tools/patch_087_sync_ui.py
+
       - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
@@ -57,11 +60,11 @@ jobs:
 
       - name: Renomear APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-0.8.6.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-0.8.7-debug.apk
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Conecta-Midia-0.8.6.1-APK
-          path: Conecta-Midia-0.8.6.1-debug.apk
+          name: Conecta-Midia-0.8.7-APK
+          path: Conecta-Midia-0.8.7-debug.apk
           if-no-files-found: error
