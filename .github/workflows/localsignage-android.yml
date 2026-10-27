@@ -110,9 +110,10 @@ jobs:
         working-directory: buildsrc/localsignage/android
         run: gradle --no-daemon clean assembleDebug
 
-      - name: Organizar APKs
+      - name: Organizar e validar APKs
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p output
           if [[ "${{ steps.signing.outputs.signed }}" == "true" ]]; then
             APK="buildsrc/localsignage/android/app/build/outputs/apk/release/app-release.apk"
@@ -120,6 +121,8 @@ jobs:
             APK="buildsrc/localsignage/android/app/build/outputs/apk/debug/app-debug.apk"
           fi
           test -f "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee output/APK-SIGNATURE.txt
+          "$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | tee output/APK-INFO.txt
           cp "$APK" output/LocalSignage-Universal-1.0.0.apk
           cp "$APK" output/LocalSignage-TV-FireStick-1.0.0.apk
           cp "$APK" output/LocalSignage-Tablet-1.0.0.apk
@@ -132,4 +135,6 @@ jobs:
           path: |
             output/*.apk
             output/SHA256SUMS.txt
+            output/APK-SIGNATURE.txt
+            output/APK-INFO.txt
           if-no-files-found: error
