@@ -1,9 +1,9 @@
-name: Gerar APK Conecta Mídia 0.9.0
+name: Gerar APK Conecta Mídia 0.9.1
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, player-0.9.0-ui-8799 ]
+    branches: [ player-0.9.0-ui-8799 ]
 
 jobs:
   build:
@@ -33,11 +33,11 @@ jobs:
 
       - name: Renomear APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.0-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.1.apk
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Conecta-Midia-Player-0.9.0-APK
-          path: Conecta-Midia-Player-0.9.0-debug.apk
+          name: Conecta-Midia-Player-0.9.1-APK
+          path: Conecta-Midia-Player-0.9.1.apk
           if-no-files-found: error
