@@ -1,0 +1,100 @@
+name: LocalSignage - Build Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["localsignage-1.0"]
+    paths:
+      - "localsignage-package/**"
+      - ".github/workflows/localsignage-android.yml"
+  pull_request:
+    paths:
+      - "localsignage-package/**"
+      - ".github/workflows/localsignage-android.yml"
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extrair código-fonte
+        run: |
+          mkdir -p buildsrc
+          unzip -q localsignage-package/LocalSignage-1.0-source.zip -d buildsrc
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Preparar chave de assinatura se configurada
+        id: signing
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.LOCALSIGNAGE_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.LOCALSIGNAGE_STOREPASS }}
+          KEYALIAS: ${{ secrets.LOCALSIGNAGE_KEYALIAS }}
+          KEYPASS: ${{ secrets.LOCALSIGNAGE_KEYPASS }}
+        run: |
+          if [[ -n "$KEYSTORE_B64" && -n "$STOREPASS" && -n "$KEYALIAS" && -n "$KEYPASS" ]]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/localsignage-release.jks"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compilar APK release assinado
+        if: steps.signing.outputs.signed == 'true'
+        working-directory: buildsrc/localsignage/android
+        env:
+          LOCALSIGNAGE_KEYSTORE: ${{ runner.temp }}/localsignage-release.jks
+          LOCALSIGNAGE_STOREPASS: ${{ secrets.LOCALSIGNAGE_STOREPASS }}
+          LOCALSIGNAGE_KEYALIAS: ${{ secrets.LOCALSIGNAGE_KEYALIAS }}
+          LOCALSIGNAGE_KEYPASS: ${{ secrets.LOCALSIGNAGE_KEYPASS }}
+        run: gradle --no-daemon clean assembleRelease
+
+      - name: Compilar APK debug instalável
+        if: steps.signing.outputs.signed != 'true'
+        working-directory: buildsrc/localsignage/android
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Organizar APKs
+        shell: bash
+        run: |
+          mkdir -p output
+          if [[ "${{ steps.signing.outputs.signed }}" == "true" ]]; then
+            APK="buildsrc/localsignage/android/app/build/outputs/apk/release/app-release.apk"
+          else
+            APK="buildsrc/localsignage/android/app/build/outputs/apk/debug/app-debug.apk"
+          fi
+          test -f "$APK"
+          cp "$APK" output/LocalSignage-Universal-1.0.0.apk
+          cp "$APK" output/LocalSignage-TV-FireStick-1.0.0.apk
+          cp "$APK" output/LocalSignage-Tablet-1.0.0.apk
+          sha256sum output/*.apk > output/SHA256SUMS.txt
+
+      - name: Publicar APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalSignage-Android-1.0.0
+          path: |
+            output/*.apk
+            output/SHA256SUMS.txt
+          if-no-files-found: error
