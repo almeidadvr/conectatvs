@@ -20,11 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extrair código-fonte
+      - name: Reconstruir e extrair código-fonte
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force buildsrc | Out-Null
-          Expand-Archive -Path localsignage-package/LocalSignage-1.0-source.zip -DestinationPath buildsrc -Force
+          $parts = Get-ChildItem "localsignage-package/source.b64.part-*" | Sort-Object Name
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ""
+          $b64 = $b64 -replace '\s',''
+          [IO.File]::WriteAllBytes("$PWD\LocalSignage-1.0-source.zip", [Convert]::FromBase64String($b64))
+          Expand-Archive -Path LocalSignage-1.0-source.zip -DestinationPath buildsrc -Force
 
       - name: Python 3.12
         uses: actions/setup-python@v5
