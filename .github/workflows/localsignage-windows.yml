@@ -134,11 +134,28 @@ jobs:
         shell: pwsh
         run: |
           $env:LOCALSIGNAGE_DATA = "$PWD\smoke-data"
-          $p = Start-Process -FilePath "$PWD\dist\LocalSignageConsole\LocalSignageConsole.exe" -PassThru -WindowStyle Hidden
+          $stdout = "$PWD\smoke-stdout.log"
+          $stderr = "$PWD\smoke-stderr.log"
+          $exe = "$PWD\dist\LocalSignageConsole\LocalSignageConsole.exe"
+          $p = Start-Process -FilePath $exe -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $ok = $false
           try {
-            Start-Sleep -Seconds 5
-            $r = Invoke-RestMethod -Uri http://127.0.0.1:8765/api/health -TimeoutSec 10
-            if (-not $r) { throw "Health check sem resposta" }
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Seconds 1
+              if ($p.HasExited) { break }
+              try {
+                $r = Invoke-RestMethod -Uri http://127.0.0.1:8765/api/health -TimeoutSec 2
+                if ($r.ok -eq $true) { $ok = $true; break }
+              } catch { }
+            }
+            if (-not $ok) {
+              Write-Host "=== stdout ==="
+              if (Test-Path $stdout) { Get-Content $stdout }
+              Write-Host "=== stderr ==="
+              if (Test-Path $stderr) { Get-Content $stderr }
+              if ($p.HasExited) { throw "Console encerrou com código $($p.ExitCode)" }
+              throw "Console não respondeu ao health check em 20 segundos"
+            }
           } finally {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           }
