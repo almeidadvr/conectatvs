@@ -1,0 +1,66 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/player_background">
+
+    <androidx.media3.ui.PlayerView android:id="@+id/playerView" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" app:use_controller="false" app:resize_mode="fit" />
+    <ImageView android:id="@+id/imageView" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" android:scaleType="fitCenter" android:background="#000000" />
+
+    <LinearLayout
+        android:id="@+id/statusPanel"
+        android:layout_width="340dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingLeft="12dp" android:paddingTop="9dp" android:paddingRight="12dp" android:paddingBottom="10dp"
+        android:background="@drawable/panel_bg_new">
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="●" android:textColor="#FF7A00" android:textSize="10sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginHorizontal="3dp" android:text="conecta" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="28sp" android:letterSpacing="-0.04" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="●" android:textColor="#FF7A00" android:textSize="10sp" />
+        </LinearLayout>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="-5dp" android:layout_marginLeft="112dp" android:text="Soluções" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="8sp" />
+
+        <TextView android:id="@+id/subtitleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:text="Player para Android TV" android:textColor="#D5E7F8" android:textSize="10sp" />
+        <TextView android:id="@+id/codeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Código deste dispositivo" android:textColor="#AFC7DF" android:textSize="9sp" />
+        <TextView android:id="@+id/codeText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="000 000" android:textColor="#E6F4FF" android:textStyle="bold" android:textSize="30sp" android:letterSpacing="0.08" />
+        <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Configure o endereço do servidor." android:textColor="#FFFFFF" android:textSize="9sp" android:gravity="center" android:maxLines="2" />
+
+        <EditText android:id="@+id/serverInput" android:layout_width="match_parent" android:layout_height="32dp" android:layout_marginTop="6dp" android:hint="IP do computador. Ex.: 192.168.0.48" android:singleLine="true" android:inputType="textUri" android:textColor="#FFFFFF" android:textSize="10sp" android:textColorHint="#7898B8" android:backgroundTint="#3AB8FF" android:paddingLeft="7dp" android:paddingRight="7dp" />
+
+        <LinearLayout android:id="@+id/networkPanel" android:layout_width="match_parent" android:layout_height="58dp" android:layout_marginTop="6dp" android:orientation="vertical" android:background="@drawable/network_bg" android:paddingLeft="8dp" android:paddingTop="4dp" android:paddingRight="8dp" android:paddingBottom="4dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView android:layout_width="21dp" android:layout_height="wrap_content" android:text="⌁" android:textColor="#4DD6FF" android:textSize="18sp" android:gravity="center" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.7" android:orientation="vertical" android:gravity="center_vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rede Wi‑Fi" android:textColor="#7999B8" android:textSize="7sp" />
+                    <TextView android:id="@+id/ssidText" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:text="Wi‑Fi conectado" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" />
+                </LinearLayout>
+                <View android:layout_width="1dp" android:layout_height="18dp" android:layout_marginHorizontal="5dp" android:background="#28567A" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="0.8" android:orientation="vertical" android:gravity="center_vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sinal" android:textColor="#7999B8" android:textSize="7sp" />
+                    <TextView android:id="@+id/signalText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" />
+                </LinearLayout>
+            </LinearLayout>
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#183F60" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Qualidade" android:textColor="#7999B8" android:textSize="7sp" />
+                    <TextView android:id="@+id/qualityText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Excelente" android:textColor="#29E69D" android:textStyle="bold" android:textSize="9sp" />
+                </LinearLayout>
+                <View android:layout_width="1dp" android:layout_height="18dp" android:layout_marginHorizontal="5dp" android:background="#28567A" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.35" android:orientation="vertical" android:gravity="center_vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="IP do dispositivo" android:textColor="#7999B8" android:textSize="7sp" />
+                    <TextView android:id="@+id/ipText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <Button android:id="@+id/saveServerButton" android:layout_width="165dp" android:layout_height="34dp" android:layout_marginTop="7dp" android:text="SALVAR E CONECTAR" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" android:background="@drawable/button_bg" />
+        <Button android:id="@+id/settingsButton" android:layout_width="145dp" android:layout_height="32dp" android:layout_marginTop="5dp" android:text="ALTERAR SERVIDOR" android:textColor="#FFFFFF" android:textSize="8sp" android:background="@drawable/button_bg" android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/offlineBadge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|end" android:layout_margin="10dp" android:padding="7dp" android:background="#AA000000" android:text="OFFLINE • reproduzindo cache" android:textColor="#FFFFFF" android:textSize="9sp" android:visibility="gone" />
+</FrameLayout>
