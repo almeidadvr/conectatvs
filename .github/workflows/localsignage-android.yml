@@ -34,12 +34,26 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Instalar Android 35 usando o SDK do runner
+      - name: Instalar Android SDK Command-line Tools
         shell: bash
         run: |
-          echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          set -euo pipefail
+          SDK_ROOT="$RUNNER_TEMP/android-sdk"
+          TOOLS_ZIP="$RUNNER_TEMP/commandlinetools-linux.zip"
+          TOOLS_SHA256="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
+          curl --fail --location --retry 3 --output "$TOOLS_ZIP" \
+            "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
+          echo "$TOOLS_SHA256  $TOOLS_ZIP" | sha256sum -c -
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest" "$RUNNER_TEMP/cmdline-tools-unpacked"
+          unzip -q "$TOOLS_ZIP" -d "$RUNNER_TEMP/cmdline-tools-unpacked"
+          mv "$RUNNER_TEMP/cmdline-tools-unpacked/cmdline-tools/"* "$SDK_ROOT/cmdline-tools/latest/"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" \
+            "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
