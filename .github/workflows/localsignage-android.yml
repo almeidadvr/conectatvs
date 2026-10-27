@@ -28,6 +28,18 @@ jobs:
           unzip -t LocalSignage-1.0-source.zip
           unzip -q LocalSignage-1.0-source.zip -d buildsrc
 
+      - name: Alinhar Java e Kotlin em JVM 17
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path("buildsrc/localsignage/android/app/build.gradle.kts")
+          s = p.read_text()
+          marker = ' buildFeatures { compose=true; buildConfig=true };'
+          patch = ' compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 };\n' + marker
+          if 'compileOptions {' not in s:
+              s = s.replace(marker, patch)
+          p.write_text(s)
+
       - name: Java 17
         uses: actions/setup-java@v4
         with:
