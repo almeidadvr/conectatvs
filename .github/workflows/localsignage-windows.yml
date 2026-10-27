@@ -114,10 +114,10 @@ jobs:
           Name: "{commonappdata}\LocalSignage\Backups"
 
           [Run]
-          Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\install-service.ps1\""; Flags: runhidden waituntilterminated
+          Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; Flags: runhidden waituntilterminated
 
           [UninstallRun]
-          Filename: "schtasks.exe"; Parameters: "/Delete /TN \"LocalSignage Console\" /F"; Flags: runhidden; RunOnceId: "RemoveLocalSignageTask"
+          Filename: "schtasks.exe"; Parameters: "/Delete /TN ""LocalSignage Console"" /F"; Flags: runhidden; RunOnceId: "RemoveLocalSignageTask"
           '@ | Set-Content -Encoding UTF8 installer/LocalSignage-CI.iss
 
       - name: Instalar Inno Setup se necessário
