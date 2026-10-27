@@ -5,10 +5,14 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Base64
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -40,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var imageView: ImageView
     private lateinit var statusPanel: LinearLayout
+    private lateinit var brandLogo: ImageView
     private lateinit var codeText: TextView
     private lateinit var statusText: TextView
     private lateinit var serverInput: EditText
@@ -53,8 +58,8 @@ class MainActivity : AppCompatActivity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val client = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
         .build()
     private val prefs by lazy { getSharedPreferences("conecta_sign", MODE_PRIVATE) }
 
@@ -63,31 +68,20 @@ class MainActivity : AppCompatActivity() {
     private var activeItems = mutableListOf<PlaylistItem>()
     private var currentIndex = -1
     private var imageJob: Job? = null
-    private var syncJob: Job? = null
     private var connectivityJob: Job? = null
-    private var playlistVersion = ""
-    private var currentPlaylistId = ""
-    private var playbackStarted = false
-    private var syncAnchorMs = 0L
-    private var serverClockOffsetMs = 0L
     private var pairedTv: JSONObject? = null
+    private var currentPlaylistId = ""
 
     data class PlaylistItem(
         val id: String,
         val name: String,
         val kind: String,
-        val durationSeconds: Int,
         val url: String,
         val localPath: String,
         val durationMs: Long
     )
 
-    data class NetworkInfo(
-        val ssid: String,
-        val rssi: Int,
-        val quality: String,
-        val ip: String
-    )
+    data class NetInfo(val ssid: String, val rssi: Int, val quality: String, val ip: String)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +92,7 @@ class MainActivity : AppCompatActivity() {
         playerView = findViewById(R.id.playerView)
         imageView = findViewById(R.id.imageView)
         statusPanel = findViewById(R.id.statusPanel)
+        brandLogo = findViewById(R.id.brandLogo)
         codeText = findViewById(R.id.codeText)
         statusText = findViewById(R.id.statusText)
         serverInput = findViewById(R.id.serverInput)
@@ -109,19 +104,20 @@ class MainActivity : AppCompatActivity() {
         qualityText = findViewById(R.id.qualityText)
         ipText = findViewById(R.id.ipText)
 
+        loadOfficialLogo()
+        requestNetworkPermissions()
+
         player = ExoPlayer.Builder(this).build()
         playerView.player = player
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && activeItems.isNotEmpty()) syncPlayback(true)
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) playNext()
             }
         })
 
         pairingCode = prefs.getString("pairing_code", null)
-            ?: Random.nextInt(100000, 999999).toString().also {
-                prefs.edit().putString("pairing_code", it).apply()
-            }
+            ?: Random.nextInt(100000, 999999).toString().also { prefs.edit().putString("pairing_code", it).apply() }
         codeText.text = "${pairingCode.take(3)} ${pairingCode.takeLast(3)}"
 
         serverUrl = prefs.getString("server_url", "") ?: ""
@@ -129,21 +125,22 @@ class MainActivity : AppCompatActivity() {
         saveServerButton.setOnClickListener { saveAndConnect() }
         settingsButton.setOnClickListener { showServerSettings() }
 
-        requestWifiPermissionIfNeeded()
         updateNetworkInfo()
         loadCachedPlaylist()
-        startLocalSyncLoop()
-
-        if (serverUrl.isBlank()) {
-            showServerSettings()
-        } else {
-            if (activeItems.isNotEmpty()) {
-                offlineBadge.visibility = View.VISIBLE
-                syncPlayback(true)
-            } else {
-                showPairingState("Conectando ao servidor...")
-            }
+        if (serverUrl.isBlank()) showServerSettings() else {
+            if (activeItems.isNotEmpty()) playItem(0, 0)
+            else showPairingState("Conectando ao Console...")
             startConnectivityLoop()
+        }
+    }
+
+    private fun loadOfficialLogo() {
+        runCatching {
+            val text = resources.openRawResource(R.raw.logo_conecta_base64).bufferedReader().use { it.readText().trim() }
+            val bytes = Base64.decode(text, Base64.DEFAULT)
+            brandLogo.setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+        }.onFailure {
+            brandLogo.visibility = View.GONE
         }
     }
 
@@ -154,42 +151,55 @@ class MainActivity : AppCompatActivity() {
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
-    private fun requestWifiPermissionIfNeeded() {
-        val permissions = mutableListOf<String>()
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            permissions += Manifest.permission.ACCESS_FINE_LOCATION
+    private fun requestNetworkPermissions() {
+        val list = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT <= 32 && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            list += Manifest.permission.ACCESS_FINE_LOCATION
         }
         if (Build.VERSION.SDK_INT >= 33 && ActivityCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
-            permissions += Manifest.permission.NEARBY_WIFI_DEVICES
+            list += Manifest.permission.NEARBY_WIFI_DEVICES
         }
-        if (permissions.isNotEmpty()) ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 104)
+        if (list.isNotEmpty()) ActivityCompat.requestPermissions(this, list.toTypedArray(), 104)
     }
 
-    private fun networkInfo(): NetworkInfo {
-        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val wi = runCatching { wm.connectionInfo }.getOrNull()
-        var ssid = wi?.ssid?.trim('"') ?: "Wi-Fi"
-        if (ssid.isBlank() || ssid == "<unknown ssid>") ssid = "Wi-Fi conectado"
+    private fun wifiInfoModern(): WifiInfo? {
+        return runCatching {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = cm.activeNetwork ?: return@runCatching null
+            val caps = cm.getNetworkCapabilities(network) ?: return@runCatching null
+            if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return@runCatching null
+            if (Build.VERSION.SDK_INT >= 31) caps.transportInfo as? WifiInfo
+            else @Suppress("DEPRECATION") (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).connectionInfo
+        }.getOrNull()
+    }
+
+    private fun networkInfo(): NetInfo {
+        val wi = wifiInfoModern()
+        var ssid = wi?.ssid?.trim('"').orEmpty()
+        if (ssid.isBlank() || ssid.equals("<unknown ssid>", true)) {
+            ssid = when {
+                Build.VERSION.SDK_INT >= 33 && ActivityCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED -> "Permita Dispositivos próximos"
+                Build.VERSION.SDK_INT <= 32 && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED -> "Permita Localização"
+                else -> "SSID indisponível no Android"
+            }
+        }
         val rssi = wi?.rssi ?: -127
         val quality = when {
             rssi >= -50 -> "Excelente"
             rssi >= -60 -> "Muito boa"
             rssi >= -70 -> "Boa"
             rssi >= -80 -> "Regular"
-            else -> "Fraca"
+            rssi > -120 -> "Fraca"
+            else -> "—"
         }
-        val ip = deviceIp()
-        return NetworkInfo(ssid, rssi, quality, ip)
+        return NetInfo(ssid, rssi, quality, deviceIp())
     }
 
-    private fun deviceIp(): String {
-        return runCatching {
-            NetworkInterface.getNetworkInterfaces().toList()
-                .flatMap { it.inetAddresses.toList() }
-                .firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
-                ?.hostAddress ?: "—"
-        }.getOrDefault("—")
-    }
+    private fun deviceIp(): String = runCatching {
+        NetworkInterface.getNetworkInterfaces().toList()
+            .flatMap { it.inetAddresses.toList() }
+            .firstOrNull { !it.isLoopbackAddress && it is Inet4Address }?.hostAddress ?: "—"
+    }.getOrDefault("—")
 
     private fun updateNetworkInfo() {
         val n = networkInfo()
@@ -199,34 +209,16 @@ class MainActivity : AppCompatActivity() {
         ipText.text = n.ip
     }
 
-    private fun startLocalSyncLoop() {
-        syncJob?.cancel()
-        syncJob = scope.launch {
-            while (isActive) {
-                delay(1000)
-                if (playbackStarted && activeItems.isNotEmpty()) syncPlayback(false)
-            }
-        }
-    }
-
-    private fun startConnectivityLoop() {
-        connectivityJob?.cancel()
-        connectivityJob = scope.launch { connectivityLoop() }
-    }
-
     private fun saveAndConnect() {
         val raw = serverInput.text.toString().trim()
-        if (raw.isBlank()) {
-            statusText.text = "Informe o IP do computador."
-            return
-        }
+        if (raw.isBlank()) { statusText.text = "Informe o IP do computador."; return }
         scope.launch {
             saveServerButton.isEnabled = false
-            statusText.text = "Procurando o Conecta Mídia..."
+            statusText.text = "Testando $raw:8799..."
             val found = withContext(Dispatchers.IO) { resolveServer(raw) }
             saveServerButton.isEnabled = true
             if (found == null) {
-                statusText.text = "Não encontrei o servidor. Confira o IP e se o console está aberto no Windows."
+                statusText.text = "Não consegui acessar $raw:8799. Use o Console 0.9.2.5 e confirme o Firewall do Windows."
                 return@launch
             }
             serverUrl = found
@@ -234,141 +226,78 @@ class MainActivity : AppCompatActivity() {
             serverInput.visibility = View.GONE
             saveServerButton.visibility = View.GONE
             settingsButton.visibility = View.VISIBLE
-            statusText.text = "Servidor encontrado. Aguardando pareamento..."
+            statusText.text = "Console encontrado. Aguardando pareamento..."
             startConnectivityLoop()
         }
     }
 
     private fun resolveServer(raw: String): String? {
-        val cleaned = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
-        val candidate = if (Regex(":\\d+$").containsMatchIn(cleaned)) "http://$cleaned" else "http://$cleaned:8799"
-        return runCatching {
-            getJson("$candidate/api/state")
-            candidate
-        }.getOrNull()
+        val clean = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
+        val candidate = if (Regex(":\\d+$").containsMatchIn(clean)) "http://$clean" else "http://$clean:8799"
+        return runCatching { getJson("$candidate/api/state"); candidate }.getOrNull()
     }
 
-    private suspend fun connectivityLoop() {
-        while (scope.isActive) {
-            if (serverUrl.isBlank()) return
-            updateNetworkInfo()
-            try {
-                val state = withContext(Dispatchers.IO) { getJson("$serverUrl/api/state") }
-                offlineBadge.visibility = View.GONE
-                applyState(state)
-                withContext(Dispatchers.IO) { postHeartbeat() }
-            } catch (_: Exception) {
-                if (activeItems.isNotEmpty()) {
-                    offlineBadge.visibility = View.VISIBLE
-                    if (!playbackStarted) syncPlayback(true)
-                } else {
-                    showPairingState("Sem conexão com o servidor. Tentando novamente...")
+    private fun startConnectivityLoop() {
+        connectivityJob?.cancel()
+        connectivityJob = scope.launch {
+            while (isActive) {
+                updateNetworkInfo()
+                try {
+                    val state = withContext(Dispatchers.IO) { getJson("$serverUrl/api/state") }
+                    offlineBadge.visibility = View.GONE
+                    applyState(state)
+                    withContext(Dispatchers.IO) { postHeartbeat() }
+                } catch (_: Exception) {
+                    if (activeItems.isNotEmpty()) offlineBadge.visibility = View.VISIBLE
+                    else showPairingState("Sem conexão com o Console em ${serverUrl.removePrefix("http://")}")
                 }
+                delay(5000)
             }
-            delay(5000)
         }
     }
 
     private suspend fun applyState(state: JSONObject) {
         val tvs = state.optJSONArray("tvs") ?: JSONArray()
-        pairedTv = (0 until tvs.length())
-            .mapNotNull { tvs.optJSONObject(it) }
+        val tv = (0 until tvs.length()).mapNotNull { tvs.optJSONObject(it) }
             .firstOrNull { it.optString("pairingCode") == pairingCode }
+        pairedTv = tv
+        if (tv == null) { showPairingState("Console conectado. Cadastre o código acima no painel."); return }
 
-        val tv = pairedTv
-        if (tv == null) {
-            showPairingState("Cadastre este código no painel do Conecta Mídia.")
-            return
-        }
-
-        val selected = choosePlaylist(state, tv)
-        if (selected == null) {
-            showPairingState("Dispositivo pareado. Aguardando uma playlist...")
-            return
-        }
-
-        val normalized = normalizePlaylist(state, selected)
-        val version = selected.optString("updatedAt").ifBlank { selected.toString().hashCode().toString() }
-        currentPlaylistId = selected.optString("id")
-
-        if (version != playlistVersion || activeItems.isEmpty()) {
+        val playlist = choosePlaylist(state, tv)
+        if (playlist == null) { showPairingState("Dispositivo pareado. Aguardando playlist..."); return }
+        currentPlaylistId = playlist.optString("id")
+        val normalized = normalizePlaylist(state, playlist)
+        val signature = normalized.toString().hashCode().toString()
+        if (prefs.getString("playlist_signature", "") != signature || activeItems.isEmpty()) {
             val parsed = withContext(Dispatchers.IO) { cachePlaylist(normalized) }
-            if (parsed.isEmpty()) {
-                showPairingState("Playlist sem arquivos compatíveis.")
-                return
-            }
+            if (parsed.isEmpty()) { showPairingState("Playlist sem mídia compatível."); return }
             activeItems = parsed.toMutableList()
-            playlistVersion = version
-            currentIndex = -1
-            syncAnchorMs = System.currentTimeMillis()
-            serverClockOffsetMs = 0L
-            saveCachedPlaylist(normalized)
-            saveSyncState()
-            syncPlayback(true)
-        } else {
-            if (syncAnchorMs <= 0L) syncAnchorMs = System.currentTimeMillis()
-            syncPlayback(false)
-        }
+            prefs.edit().putString("cached_playlist", normalized.toString()).putString("playlist_signature", signature).apply()
+            playItem(0, 0)
+        } else if (currentIndex < 0 && activeItems.isNotEmpty()) playItem(0, 0)
     }
 
     private fun choosePlaylist(state: JSONObject, tv: JSONObject): JSONObject? {
-        val playlists = state.optJSONArray("playlists") ?: JSONArray()
-        val targeted = (0 until playlists.length()).mapNotNull { playlists.optJSONObject(it) }
-            .filter { it.optBoolean("active", true) && targetsTv(it, tv) }
-
-        val scheduled = targeted.filter { !it.optBoolean("fallback", false) && hasSchedule(it) && isScheduleActive(it) }
-        if (scheduled.isNotEmpty()) return scheduled.first()
-
-        val regular = targeted.filter { !it.optBoolean("fallback", false) && !hasSchedule(it) }
-        if (regular.isNotEmpty()) return regular.first()
-
-        val fixedId = tv.optString("playlistId")
-        if (fixedId.isNotBlank()) {
-            (0 until playlists.length()).mapNotNull { playlists.optJSONObject(it) }
-                .firstOrNull { it.optString("id") == fixedId && it.optBoolean("active", true) }
-                ?.let { return it }
-        }
-
-        return targeted.firstOrNull { it.optBoolean("fallback", false) }
-    }
-
-    private fun targetsTv(p: JSONObject, tv: JSONObject): Boolean {
+        val arr = state.optJSONArray("playlists") ?: JSONArray()
+        val all = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }.filter { it.optBoolean("active", true) }
+        val fixed = tv.optString("playlistId")
+        if (fixed.isNotBlank()) all.firstOrNull { it.optString("id") == fixed }?.let { return it }
         val tvId = tv.optString("id")
-        if (p.optString("id") == tv.optString("playlistId") || p.optString("id") == tv.optString("currentPlaylistId")) return true
-        val tvIds = p.optJSONArray("tvIds") ?: JSONArray()
-        if ((0 until tvIds.length()).any { tvIds.optString(it) == tvId }) return true
-        val tvGroups = tv.optJSONArray("groupIds") ?: JSONArray()
-        val groups = (0 until tvGroups.length()).map { tvGroups.optString(it) }.toSet()
-        val pGroups = p.optJSONArray("groupIds") ?: JSONArray()
-        return (0 until pGroups.length()).any { pGroups.optString(it) in groups }
-    }
-
-    private fun hasSchedule(p: JSONObject): Boolean = p.optString("startTime").isNotBlank() || p.optString("endTime").isNotBlank()
-
-    private fun isScheduleActive(p: JSONObject): Boolean {
-        fun minutes(v: String): Int? {
-            val x = v.split(':')
-            if (x.size < 2) return null
-            return x[0].toIntOrNull()?.times(60)?.plus(x[1].toIntOrNull() ?: return null)
-        }
-        val now = java.util.Calendar.getInstance().let { it.get(java.util.Calendar.HOUR_OF_DAY) * 60 + it.get(java.util.Calendar.MINUTE) }
-        val start = minutes(p.optString("startTime"))
-        val end = minutes(p.optString("endTime"))
-        if (start == null && end == null) return true
-        if (start != null && end == null) return now >= start
-        if (start == null && end != null) return now <= end
-        return if (start!! <= end!!) now in start..end else now >= start || now <= end
+        all.firstOrNull { p ->
+            val ids = p.optJSONArray("tvIds") ?: JSONArray()
+            (0 until ids.length()).any { ids.optString(it) == tvId }
+        }?.let { return it }
+        return all.firstOrNull { it.optBoolean("fallback", false) }
     }
 
     private fun normalizePlaylist(state: JSONObject, playlist: JSONObject): JSONObject {
         val mediaArr = state.optJSONArray("media") ?: JSONArray()
-        val mediaMap = (0 until mediaArr.length()).mapNotNull { mediaArr.optJSONObject(it) }
-            .associateBy { it.optString("id") }
-        val srcItems = playlist.optJSONArray("items") ?: JSONArray()
+        val mediaMap = (0 until mediaArr.length()).mapNotNull { mediaArr.optJSONObject(it) }.associateBy { it.optString("id") }
+        val src = playlist.optJSONArray("items") ?: JSONArray()
         val out = JSONArray()
-        for (i in 0 until srcItems.length()) {
-            val src = srcItems.optJSONObject(i) ?: continue
-            val mediaId = src.optString("mediaId").ifBlank { src.optString("id") }
+        for (i in 0 until src.length()) {
+            val item = src.optJSONObject(i) ?: continue
+            val mediaId = item.optString("mediaId").ifBlank { item.optString("id") }
             val m = mediaMap[mediaId] ?: continue
             var url = m.optString("url")
             if (url.startsWith('/')) url = serverUrl + url
@@ -378,233 +307,125 @@ class MainActivity : AppCompatActivity() {
                 .put("name", m.optString("name", m.optString("fileName", mediaId)))
                 .put("kind", m.optString("kind"))
                 .put("url", url)
-                .put("durationSeconds", src.optInt("durationSeconds", m.optInt("durationSeconds", 10)).coerceAtLeast(1)))
+                .put("durationSeconds", item.optInt("durationSeconds", m.optInt("durationSeconds", 10)).coerceAtLeast(1)))
         }
-        return JSONObject()
-            .put("id", playlist.optString("id"))
-            .put("updatedAt", playlist.optString("updatedAt").ifBlank { playlist.toString().hashCode().toString() })
-            .put("items", out)
+        return JSONObject().put("id", playlist.optString("id")).put("items", out)
     }
 
-    private fun cachePlaylist(playlist: JSONObject): List<PlaylistItem> {
-        val arr = playlist.optJSONArray("items") ?: JSONArray()
-        val out = mutableListOf<PlaylistItem>()
-        val mediaDir = File(filesDir, "media").apply { mkdirs() }
-        val validNames = mutableSetOf<String>()
+    private fun cachePlaylist(p: JSONObject): List<PlaylistItem> {
+        val arr = p.optJSONArray("items") ?: JSONArray()
+        val dir = File(filesDir, "media").apply { mkdirs() }
+        val result = mutableListOf<PlaylistItem>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             val id = o.optString("id")
-            val name = o.optString("name", id)
             val kind = o.optString("kind")
             val url = o.optString("url")
-            val duration = o.optInt("durationSeconds", 10).coerceAtLeast(1)
             if (id.isBlank() || url.isBlank() || kind !in setOf("video", "image")) continue
             val ext = Uri.parse(url).lastPathSegment?.substringAfterLast('.', "")?.takeIf { it.length <= 5 }
-            val filename = if (ext.isNullOrBlank()) id else "$id.$ext"
-            val file = File(mediaDir, filename)
-            validNames += filename
+            val file = File(dir, if (ext.isNullOrBlank()) id else "$id.$ext")
             if (!file.exists() || file.length() == 0L) downloadTo(url, file)
-            if (file.exists() && file.length() > 0L) {
-                val durationMs = if (kind == "video") videoDurationMs(file).coerceAtLeast(1000L) else duration * 1000L
-                out += PlaylistItem(id, name, kind, duration, url, file.absolutePath, durationMs)
-            }
+            if (!file.exists() || file.length() == 0L) continue
+            val duration = if (kind == "video") videoDuration(file).coerceAtLeast(1000L) else o.optInt("durationSeconds", 10) * 1000L
+            result += PlaylistItem(id, o.optString("name", id), kind, url, file.absolutePath, duration)
         }
-        mediaDir.listFiles()?.forEach { if (it.name !in validNames) runCatching { it.delete() } }
-        return out
+        return result
     }
-
-    private fun videoDurationMs(file: File): Long = runCatching {
-        val r = MediaMetadataRetriever()
-        r.setDataSource(file.absolutePath)
-        val ms = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-        r.release()
-        ms
-    }.getOrDefault(0L)
 
     private fun downloadTo(url: String, target: File) {
         val tmp = File(target.parentFile, target.name + ".part")
-        try {
-            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                if (!response.isSuccessful) error("HTTP ${response.code}")
-                val body = response.body ?: error("Arquivo vazio")
-                FileOutputStream(tmp).use { out -> body.byteStream().copyTo(out) }
-            }
-            if (target.exists()) target.delete()
-            if (!tmp.renameTo(target)) error("Falha ao salvar mídia")
-        } catch (e: Exception) {
-            tmp.delete()
-            throw e
+        client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            if (!r.isSuccessful) error("HTTP ${r.code}")
+            FileOutputStream(tmp).use { out -> (r.body ?: error("sem corpo")).byteStream().copyTo(out) }
         }
+        if (target.exists()) target.delete()
+        if (!tmp.renameTo(target)) error("Falha ao salvar")
     }
 
-    private fun synchronizedNowMs(): Long = System.currentTimeMillis() + serverClockOffsetMs
+    private fun videoDuration(file: File): Long = runCatching {
+        val r = MediaMetadataRetriever(); r.setDataSource(file.absolutePath)
+        val d = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        r.release(); d
+    }.getOrDefault(0L)
 
-    private fun timelinePosition(): Pair<Int, Long> {
-        val total = activeItems.sumOf { it.durationMs }.coerceAtLeast(1L)
-        val elapsed = ((synchronizedNowMs() - syncAnchorMs) % total + total) % total
-        var cursor = 0L
-        activeItems.forEachIndexed { index, item ->
-            if (elapsed < cursor + item.durationMs) return index to (elapsed - cursor)
-            cursor += item.durationMs
-        }
-        return 0 to 0L
-    }
-
-    private fun syncPlayback(force: Boolean) {
-        if (activeItems.isEmpty() || syncAnchorMs <= 0L) return
-        val (targetIndex, targetOffset) = timelinePosition()
-        val target = activeItems[targetIndex]
-        val sameItem = currentIndex == targetIndex && playbackStarted
-        if (!force && sameItem) {
-            if (target.kind == "video" && player.playbackState != Player.STATE_IDLE) {
-                val drift = abs(player.currentPosition - targetOffset)
-                if (drift > 650L) player.seekTo(targetOffset.coerceAtMost((target.durationMs - 200L).coerceAtLeast(0L)))
-            }
-            return
-        }
-        playItem(targetIndex, targetOffset)
-    }
-
-    private fun playItem(index: Int, offsetMs: Long) {
+    private fun playItem(index: Int, offset: Long) {
         if (activeItems.isEmpty()) return
-        playbackStarted = true
-        currentIndex = index
+        currentIndex = index % activeItems.size
+        val item = activeItems[currentIndex]
         statusPanel.visibility = View.GONE
         settingsButton.visibility = View.GONE
-        imageJob?.cancel()
-        player.stop()
-        val item = activeItems[index]
-        val file = File(item.localPath)
-        if (!file.exists()) {
-            scope.launch { delay(500); syncPlayback(true) }
-            return
-        }
+        imageJob?.cancel(); player.stop()
         if (item.kind == "video") {
-            imageView.visibility = View.GONE
-            playerView.visibility = View.VISIBLE
-            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-            player.prepare()
-            player.seekTo(offsetMs.coerceIn(0L, (item.durationMs - 200L).coerceAtLeast(0L)))
-            player.playWhenReady = true
+            imageView.visibility = View.GONE; playerView.visibility = View.VISIBLE
+            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(item.localPath))))
+            player.prepare(); player.seekTo(offset.coerceAtLeast(0)); player.playWhenReady = true
         } else {
-            playerView.visibility = View.GONE
-            imageView.visibility = View.VISIBLE
-            imageView.setImageBitmap(BitmapFactory.decodeFile(file.absolutePath))
-            imageJob = scope.launch {
-                delay((item.durationMs - offsetMs).coerceAtLeast(100L))
-                syncPlayback(true)
-            }
+            playerView.visibility = View.GONE; imageView.visibility = View.VISIBLE
+            imageView.setImageBitmap(BitmapFactory.decodeFile(item.localPath))
+            imageJob = scope.launch { delay(item.durationMs); playNext() }
         }
     }
 
+    private fun playNext() { if (activeItems.isNotEmpty()) playItem((currentIndex + 1) % activeItems.size, 0) }
+
     private fun showPairingState(message: String) {
-        playbackStarted = false
-        player.stop()
-        imageJob?.cancel()
-        playerView.visibility = View.GONE
-        imageView.visibility = View.GONE
-        statusPanel.visibility = View.VISIBLE
+        player.stop(); imageJob?.cancel(); currentIndex = -1
+        playerView.visibility = View.GONE; imageView.visibility = View.GONE; statusPanel.visibility = View.VISIBLE
         statusText.text = message
-        serverInput.visibility = View.GONE
-        saveServerButton.visibility = View.GONE
+        serverInput.visibility = if (serverUrl.isBlank()) View.VISIBLE else View.GONE
+        saveServerButton.visibility = if (serverUrl.isBlank()) View.VISIBLE else View.GONE
         settingsButton.visibility = if (serverUrl.isBlank()) View.GONE else View.VISIBLE
         updateNetworkInfo()
     }
 
     private fun showServerSettings() {
-        playbackStarted = false
-        player.pause()
-        imageJob?.cancel()
-        playerView.visibility = View.GONE
-        imageView.visibility = View.GONE
-        statusPanel.visibility = View.VISIBLE
-        serverInput.visibility = View.VISIBLE
-        saveServerButton.visibility = View.VISIBLE
-        settingsButton.visibility = View.GONE
-        statusText.text = "Informe o IP do computador que está executando o Conecta Mídia."
+        player.pause(); imageJob?.cancel(); currentIndex = -1
+        playerView.visibility = View.GONE; imageView.visibility = View.GONE; statusPanel.visibility = View.VISIBLE
+        serverInput.visibility = View.VISIBLE; saveServerButton.visibility = View.VISIBLE; settingsButton.visibility = View.GONE
         serverInput.setText(serverUrl.removePrefix("http://").removeSuffix(":8799"))
-        serverInput.requestFocus()
-        updateNetworkInfo()
-    }
-
-    private fun saveCachedPlaylist(playlist: JSONObject) {
-        prefs.edit()
-            .putString("cached_playlist", playlist.toString())
-            .putString("playlist_version", playlist.optString("updatedAt"))
-            .putString("current_playlist_id", currentPlaylistId)
-            .apply()
-    }
-
-    private fun saveSyncState() {
-        prefs.edit().putLong("sync_anchor_ms", syncAnchorMs).putLong("server_clock_offset_ms", serverClockOffsetMs).apply()
+        statusText.text = "Informe o IP do PC com o Console 0.9.2.5."
+        updateNetworkInfo(); serverInput.requestFocus()
     }
 
     private fun loadCachedPlaylist() {
-        syncAnchorMs = prefs.getLong("sync_anchor_ms", 0L)
-        serverClockOffsetMs = prefs.getLong("server_clock_offset_ms", 0L)
-        currentPlaylistId = prefs.getString("current_playlist_id", "") ?: ""
         val raw = prefs.getString("cached_playlist", null) ?: return
-        playlistVersion = prefs.getString("playlist_version", "") ?: ""
         runCatching {
-            val playlist = JSONObject(raw)
-            val arr = playlist.optJSONArray("items") ?: return@runCatching
-            val mediaDir = File(filesDir, "media")
-            val list = mutableListOf<PlaylistItem>()
+            val p = JSONObject(raw); val arr = p.optJSONArray("items") ?: return@runCatching
+            val dir = File(filesDir, "media"); val list = mutableListOf<PlaylistItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
-                val id = o.optString("id")
-                val kind = o.optString("kind")
-                val url = o.optString("url")
-                val duration = o.optInt("durationSeconds", 10).coerceAtLeast(1)
+                val id = o.optString("id"); val kind = o.optString("kind"); val url = o.optString("url")
                 val ext = Uri.parse(url).lastPathSegment?.substringAfterLast('.', "")?.takeIf { it.length <= 5 }
-                val filename = if (ext.isNullOrBlank()) id else "$id.$ext"
-                val file = File(mediaDir, filename)
-                if (file.exists() && file.length() > 0L) {
-                    val durationMs = if (kind == "video") videoDurationMs(file).coerceAtLeast(1000L) else duration * 1000L
-                    list += PlaylistItem(id, o.optString("name", id), kind, duration, url, file.absolutePath, durationMs)
+                val f = File(dir, if (ext.isNullOrBlank()) id else "$id.$ext")
+                if (f.exists()) {
+                    val d = if (kind == "video") videoDuration(f).coerceAtLeast(1000L) else o.optInt("durationSeconds", 10) * 1000L
+                    list += PlaylistItem(id, o.optString("name", id), kind, url, f.absolutePath, d)
                 }
             }
-            if (list.isNotEmpty()) {
-                activeItems = list
-                if (syncAnchorMs <= 0L) syncAnchorMs = System.currentTimeMillis()
-            }
-        }
-    }
-
-    private fun getJson(url: String): JSONObject {
-        val req = Request.Builder().url(url).build()
-        client.newCall(req).execute().use { response ->
-            val text = response.body?.string() ?: "{}"
-            if (!response.isSuccessful) error("HTTP ${response.code}")
-            return JSONObject(text)
+            activeItems = list
         }
     }
 
     private fun postHeartbeat() {
         val tv = pairedTv ?: return
-        val payload = JSONObject(tv.toString())
         val n = networkInfo()
-        payload.put("lastSeen", Instant.now().toString())
-        payload.put("wifiSsid", n.ssid)
-        payload.put("wifiRssi", n.rssi)
-        payload.put("ipAddress", n.ip)
-        payload.put("currentPlaylistId", currentPlaylistId)
-        payload.put("currentMediaId", activeItems.getOrNull(currentIndex)?.id ?: "")
-        payload.put("totalItems", activeItems.size)
-        payload.put("downloadedItems", activeItems.count { File(it.localPath).exists() })
-        payload.put("manufacturer", Build.MANUFACTURER)
-        payload.put("model", Build.MODEL)
-        payload.put("androidVersion", Build.VERSION.RELEASE)
-        payload.put("sdkInt", Build.VERSION.SDK_INT)
-        payload.put("appVersion", BuildConfig.VERSION_NAME)
-        payload.put("screenWidth", resources.displayMetrics.widthPixels)
-        payload.put("screenHeight", resources.displayMetrics.heightPixels)
-
-        val req = Request.Builder()
-            .url("$serverUrl/api/tvs")
-            .put(payload.toString().toRequestBody("application/json".toMediaType()))
-            .build()
+        val body = JSONObject(tv.toString())
+            .put("lastSeen", Instant.now().toString())
+            .put("wifiSsid", n.ssid).put("wifiRssi", n.rssi).put("ipAddress", n.ip)
+            .put("currentPlaylistId", currentPlaylistId)
+            .put("currentMediaId", activeItems.getOrNull(currentIndex)?.id ?: "")
+            .put("appVersion", BuildConfig.VERSION_NAME)
+        val req = Request.Builder().url("$serverUrl/api/tvs")
+            .put(body.toString().toRequestBody("application/json".toMediaType())).build()
         runCatching { client.newCall(req).execute().close() }
+    }
+
+    private fun getJson(url: String): JSONObject {
+        client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            val txt = r.body?.string() ?: "{}"
+            if (!r.isSuccessful) error("HTTP ${r.code}")
+            return JSONObject(txt)
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -613,25 +434,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && event?.isLongPress == true) {
-            showServerSettings()
-            return true
-        }
+        if (keyCode == KeyEvent.KEYCODE_BACK && event?.isLongPress == true) { showServerSettings(); return true }
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onResume() {
-        super.onResume()
-        enterImmersive()
-        updateNetworkInfo()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        imageJob?.cancel()
-        syncJob?.cancel()
-        connectivityJob?.cancel()
-        scope.cancel()
-        player.release()
-    }
+    override fun onResume() { super.onResume(); enterImmersive(); updateNetworkInfo() }
+    override fun onDestroy() { connectivityJob?.cancel(); imageJob?.cancel(); scope.cancel(); player.release(); super.onDestroy() }
 }
