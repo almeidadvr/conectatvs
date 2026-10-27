@@ -1,0 +1,56 @@
+name: Publicar Player 0.9.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ player-0.9.0-ui-8799 ]
+    paths:
+      - 'app/**'
+      - '.github/workflows/release-player-091.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK 35
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Configurar Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Preparar arquivo
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.1.apk
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: player-0.9.1
+          name: Conecta Mídia Player 0.9.1
+          prerelease: true
+          make_latest: false
+          files: Conecta-Midia-Player-0.9.1.apk
+          body: |
+            Versão de teste 0.9.1.
+            - painel de configuração compacto
+            - porta 8799
+            - SSID, sinal, qualidade e IP
+            - correções visuais para Fire TV / Android TV
