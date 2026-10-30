@@ -43,6 +43,7 @@ new_loop = '''    private suspend fun connectivityLoop() {
                 val cfg = stateToLegacyConfig(state, localMidpoint)
                 offlineBadge.visibility = View.GONE
                 applyStateConfig(cfg, rtt)
+                withContext(Dispatchers.IO) { runCatching { postHeartbeat() } }
             } catch (_: Exception) {
                 if (activeItems.isNotEmpty()) {
                     offlineBadge.visibility = View.VISIBLE
@@ -156,27 +157,12 @@ if 'private suspend fun applyConfig(cfg: JSONObject, measuredOffsetMs: Long, mea
         'private suspend fun applyConfig(cfg: JSONObject, measuredOffsetMs: Long, measuredRttMs: Long)'
     )
 
-# Remove chamadas aos endpoints legados, mas preserva os métodos esperados pelo restante do player.
-ph_start = s.find('    private fun postHeartbeat() {')
-if ph_start >= 0:
-    ph_end = s.find('    override fun onKeyDown', ph_start)
-    if ph_end > ph_start:
-        compatibility = '''    private fun postHeartbeat() {
-        // Console 0.9.2.x expõe estado unificado; heartbeat legado desativado.
-    }
-
-    private fun reportProof(item: PlaylistItem) {
-        // Endpoint legado /api/player/proof não é usado nesta integração.
-    }
-
-'''
-        s = s[:ph_start] + compatibility + s[ph_end:]
-
+# Mantém heartbeat e proof das versões anteriores. A API /api/state substitui apenas a leitura de configuração.
 main.write_text(s, encoding='utf-8')
 
 g = gradle.read_text(encoding='utf-8')
-g = g.replace('versionCode = 21', 'versionCode = 22')
-g = g.replace('versionName = "0.9.1"', 'versionName = "0.9.2"')
+g = g.replace('versionCode = 21', 'versionCode = 23')
+g = g.replace('versionName = "0.9.1"', 'versionName = "0.9.3"')
 gradle.write_text(g, encoding='utf-8')
 
-print('Patch 0.9.2 aplicado: compatibilidade com /api/state do Console 0.9.2.x.')
+print('Patch 0.9.3 aplicado: /api/state com heartbeat e telemetria preservados.')
