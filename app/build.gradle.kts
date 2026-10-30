@@ -11,8 +11,8 @@ android {
         applicationId = "com.conectasolucoes.conectasign"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "0.10.2"
+        versionCode = 34
+        versionName = "0.10.4"
     }
 
     compileOptions {
