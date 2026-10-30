@@ -39,23 +39,27 @@ jobs:
       - name: Aplicar sincronização e UI responsiva 0.8.7
         run: python tools/patch_087_sync_ui.py
 
-      - name: Aplicar auto-start e soft-kiosk para TV Box 0.9.0
+      - name: Aplicar somente auto-start e soft-kiosk
         run: python tools/patch_090_tvbox_kiosk.py
 
-      - name: Normalizar imports Kotlin 0.9.0.1
+      - name: Normalizar imports após kiosk
         run: python tools/patch_0901_fix_imports.py
 
-      - name: Corrigir descoberta do Console 0.9.1
-        run: python tools/patch_091_server_discovery.py
+      - name: Versionar build corrigido 0.9.6
+        run: python tools/patch_096_version_only.py
 
-      - name: API state + telemetria 0.9.3
-        run: python tools/patch_092_state_api.py
-
-      - name: Compatibilidade heartbeat 0.9.4
-        run: python tools/patch_094_heartbeat_compat.py
-
-      - name: Separar API state e API Player 0.9.5
-        run: python tools/patch_095_split_api_ports.py
+      - name: Validar comunicação legada preservada
+        shell: bash
+        run: |
+          FILE=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          grep -q '/api/player/config' "$FILE"
+          grep -q '/api/player/heartbeat' "$FILE"
+          grep -q '/api/player/proof' "$FILE"
+          if grep -q '/api/state' "$FILE"; then echo 'ERRO: /api/state não deve existir neste build'; exit 1; fi
+          if grep -q 'playerApiUrl' "$FILE"; then echo 'ERRO: playerApiUrl não deve existir neste build'; exit 1; fi
+          grep -q 'installCrashRecovery' "$FILE"
+          grep -q 'onWindowFocusChanged' "$FILE"
+          echo 'OK: rede legada preservada e kiosk presente.'
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -78,11 +82,11 @@ jobs:
 
       - name: Renomear APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.5-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.6-debug.apk
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Conecta-Midia-Player-0.9.5-APK
-          path: Conecta-Midia-Player-0.9.5-debug.apk
+          name: Conecta-Midia-Player-0.9.6-APK
+          path: Conecta-Midia-Player-0.9.6-debug.apk
           if-no-files-found: error
