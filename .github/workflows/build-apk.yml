@@ -1,4 +1,4 @@
-name: Gerar APK Conecta Mídia 0.10.1
+name: Gerar APK Conecta Mídia 0.10.2
 
 on:
   workflow_dispatch:
@@ -12,10 +12,7 @@ jobs:
       - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Aplicar correção somente da logo
-        run: python tools/patch_0101_logo.py
-
-      - name: Validar protocolo funcional 0.9.3, auto-start e layout da logo
+      - name: Validar protocolo funcional, auto-start e logo 0.10.2
         shell: bash
         run: |
           FILE=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
@@ -23,8 +20,9 @@ jobs:
           MANIFEST=app/src/main/AndroidManifest.xml
           GRADLE=app/build.gradle.kts
           LAYOUT=app/src/main/res/layout/activity_main.xml
+          LOGO=app/src/main/res/raw/logo_conecta_base64.txt
 
-          # Protocolo comprovadamente funcional da 0.9.3
+          # Protocolo comprovadamente funcional da 0.9.3/0.10.0
           grep -q ':8799' "$FILE"
           grep -q '/api/state' "$FILE"
           grep -q '/api/tvs' "$FILE"
@@ -42,7 +40,7 @@ jobs:
           if grep -q '8787..8810' "$FILE"; then echo 'ERRO: descoberta experimental detectada'; exit 1; fi
           if grep -q 'CX' "$FILE"; then echo 'ERRO: diagnóstico experimental detectado'; exit 1; fi
 
-          # Auto-start já validado fisicamente no PROSB-3000
+          # Auto-start validado fisicamente no PROSB-3000
           grep -q 'BOOT_COMPLETED' "$BOOT"
           grep -q 'LOCKED_BOOT_COMPLETED' "$BOOT"
           grep -q 'MY_PACKAGE_REPLACED' "$BOOT"
@@ -51,15 +49,17 @@ jobs:
           grep -q 'directBootAware="true"' "$MANIFEST"
           grep -q 'launchMode="singleTask"' "$MANIFEST"
 
-          # Logo: mesmo layout e mesmo tamanho da 0.10.0
+          # Mesmo layout/tamanho; logo carregada do recurso embutido validado
           grep -q 'android:id="@+id/brandLogo"' "$LAYOUT"
           grep -q 'android:layout_width="235dp"' "$LAYOUT"
           grep -q 'android:layout_height="66dp"' "$LAYOUT"
-          grep -q 'android:src="@drawable/logo_conecta_transparente"' "$LAYOUT"
-          if grep -q 'loadOfficialLogo(); requestNetworkPermissions()' "$FILE"; then echo 'ERRO: sobrescrita antiga da logo ainda ativa'; exit 1; fi
+          grep -q 'loadOfficialLogo(); requestNetworkPermissions()' "$FILE"
+          grep -q 'openRawResource(R.raw.logo_conecta_base64)' "$FILE"
+          test $(wc -c < "$LOGO") -gt 9000
+          grep -q '^UklG' "$LOGO"
 
-          grep -q 'versionName = "0.10.1"' "$GRADLE"
-          echo 'OK: protocolo, auto-start e layout preservados; somente logo corrigida.'
+          grep -q 'versionName = "0.10.2"' "$GRADLE"
+          echo 'OK: funções preservadas; logo oficial embutida e layout 235x66 mantido.'
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -82,11 +82,11 @@ jobs:
 
       - name: Renomear APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.10.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.10.2-debug.apk
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Conecta-Midia-Player-0.10.1-APK
-          path: Conecta-Midia-Player-0.10.1-debug.apk
+          name: Conecta-Midia-Player-0.10.2-APK
+          path: Conecta-Midia-Player-0.10.2-debug.apk
           if-no-files-found: error
