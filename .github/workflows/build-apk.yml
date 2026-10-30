@@ -48,7 +48,7 @@ jobs:
       - name: Corrigir descoberta do Console 0.9.1
         run: python tools/patch_091_server_discovery.py
 
-      - name: Compatibilidade com API state do Console 0.9.2
+      - name: API state + telemetria 0.9.3
         run: python tools/patch_092_state_api.py
 
       - name: Configurar Java 17
@@ -72,11 +72,11 @@ jobs:
 
       - name: Renomear APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.2-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.3-debug.apk
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Conecta-Midia-Player-0.9.2-APK
-          path: Conecta-Midia-Player-0.9.2-debug.apk
+          name: Conecta-Midia-Player-0.9.3-APK
+          path: Conecta-Midia-Player-0.9.3-debug.apk
           if-no-files-found: error
