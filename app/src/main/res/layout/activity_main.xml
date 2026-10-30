@@ -26,12 +26,9 @@
             android:layout_height="66dp"
             android:adjustViewBounds="true"
             android:scaleType="fitCenter"
-            android:src="@drawable/logo_conecta_transparente"
             android:contentDescription="Conecta Soluções" />
 
-        <TextView android:id="@+id/subtitleText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Player para Android TV" android:textColor="#FFFFFF" android:textSize="14sp" />
-        <TextView android:id="@+id/codeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:text="Código deste dispositivo" android:textColor="#C7D8EC" android:textSize="12sp" />
-        <TextView android:id="@+id/codeText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="000 000" android:textColor="#D9EDFF" android:textStyle="bold" android:textSize="38sp" android:letterSpacing="0.08" />
+        <TextView android:id="@+id/codeText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="-6dp" android:text="000 000" android:textColor="#D9EDFF" android:textStyle="bold" android:textSize="38sp" android:letterSpacing="0.08" />
         <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="Configure o endereço do servidor." android:textColor="#FFFFFF" android:textSize="11sp" android:gravity="center" />
 
         <EditText
@@ -60,8 +57,8 @@
             android:paddingLeft="8dp"
             android:paddingRight="8dp">
 
-            <TextView android:layout_width="24dp" android:layout_height="wrap_content" android:text="◉" android:textColor="#55C7FF" android:textSize="17sp" android:gravity="center" />
-            <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.4" android:orientation="vertical" android:gravity="center_vertical">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_wifi_modern" android:contentDescription="Wi-Fi" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.4" android:orientation="vertical" android:gravity="center_vertical" android:layout_marginLeft="5dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rede Wi‑Fi" android:textColor="#8EABC8" android:textSize="8sp" />
                 <TextView android:id="@+id/ssidText" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:text="Wi‑Fi conectado" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="10sp" />
             </LinearLayout>
