@@ -5,21 +5,10 @@ gradle = Path('app/build.gradle.kts')
 
 s = main.read_text(encoding='utf-8')
 
-old = '''    private fun resolveServer(raw: String): String? {
-        val cleaned = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
-        val hasPort = Regex(":\\d+$").containsMatchIn(cleaned)
-        val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8797).map { "http://$cleaned:$it" }
-        var firstHealthy: String? = null
-        for (candidate in candidates) {
-            try {
-                val cfg = getJson("$candidate/api/player/config?pairingCode=$pairingCode")
-                if (cfg.optBoolean("paired")) return candidate
-                val req = Request.Builder().url("$candidate/api/health").build()
-                client.newCall(req).execute().use { if (it.isSuccessful && firstHealthy == null) firstHealthy = candidate }
-            } catch (_: Exception) { }
-        }
-        return firstHealthy
-    }'''
+start = s.find('    private fun resolveServer(raw: String): String? {')
+end = s.find('    private suspend fun connectivityLoop()', start)
+if start < 0 or end < 0:
+    raise SystemExit('resolveServer/connectivityLoop não encontrados')
 
 new = '''    private fun resolveServer(raw: String): String? {
         val cleaned = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
@@ -29,19 +18,18 @@ new = '''    private fun resolveServer(raw: String): String? {
         val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8810).map { "http://$cleaned:$it" }
         for (candidate in candidates) {
             try {
-                // A rota de configuração do próprio Player é a fonte de verdade.
-                // Mesmo ainda não pareado, um JSON válido confirma que encontramos o Console.
+                // Um JSON válido da rota do Player confirma o Console,
+                // mesmo quando o dispositivo ainda não está pareado.
                 getJson("$candidate/api/player/config?pairingCode=$pairingCode")
                 return candidate
             } catch (_: Exception) { }
         }
         return null
-    }'''
+    }
 
-if old not in s:
-    raise SystemExit('resolveServer esperado não encontrado')
+'''
 
-s = s.replace(old, new, 1)
+s = s[:start] + new + s[end:]
 main.write_text(s, encoding='utf-8')
 
 g = gradle.read_text(encoding='utf-8')
