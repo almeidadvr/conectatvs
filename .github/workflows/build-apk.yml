@@ -1,9 +1,9 @@
-name: Gerar APK Conecta Mídia 0.9.1
+name: Gerar APK Conecta Mídia 0.10.0
 
 on:
   workflow_dispatch:
   push:
-    branches: [ player-0.9.0-ui-8799 ]
+    branches: [ player-0.10.0-functional-093-autostart ]
 
 jobs:
   build:
@@ -11,6 +11,44 @@ jobs:
     steps:
       - name: Baixar projeto
         uses: actions/checkout@v4
+
+      - name: Validar protocolo funcional 0.9.3 e auto-start
+        shell: bash
+        run: |
+          FILE=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          BOOT=app/src/main/java/com/conectasolucoes/conectasign/BootReceiver.kt
+          MANIFEST=app/src/main/AndroidManifest.xml
+          GRADLE=app/build.gradle.kts
+
+          # Protocolo comprovadamente funcional da 0.9.3
+          grep -q ':8799' "$FILE"
+          grep -q '/api/state' "$FILE"
+          grep -q '/api/tvs' "$FILE"
+          grep -q 'playSequence' "$FILE"
+          grep -q 'currentMediaId' "$FILE"
+          grep -q 'currentPlaylistId' "$FILE"
+          grep -q 'wifiRssi' "$FILE"
+          grep -q 'manufacturer' "$FILE"
+          grep -q 'androidVersion' "$FILE"
+
+          # Impede retorno das experiências que quebraram a comunicação
+          if grep -q '/api/player/config' "$FILE"; then echo 'ERRO: API player/config não pertence à base funcional 0.9.3'; exit 1; fi
+          if grep -q '/api/player/heartbeat' "$FILE"; then echo 'ERRO: heartbeat legado não pertence à base funcional 0.9.3'; exit 1; fi
+          if grep -q '/api/player/proof' "$FILE"; then echo 'ERRO: proof legado não pertence à base funcional 0.9.3'; exit 1; fi
+          if grep -q '8787..8810' "$FILE"; then echo 'ERRO: descoberta experimental detectada'; exit 1; fi
+          if grep -q 'CX' "$FILE"; then echo 'ERRO: diagnóstico experimental detectado'; exit 1; fi
+
+          # Auto-start já validado fisicamente no PROSB-3000
+          grep -q 'BOOT_COMPLETED' "$BOOT"
+          grep -q 'LOCKED_BOOT_COMPLETED' "$BOOT"
+          grep -q 'MY_PACKAGE_REPLACED' "$BOOT"
+          grep -q 'QUICKBOOT_POWERON' "$BOOT"
+          grep -q 'setAndAllowWhileIdle' "$BOOT"
+          grep -q 'directBootAware="true"' "$MANIFEST"
+          grep -q 'launchMode="singleTask"' "$MANIFEST"
+          grep -q 'versionName = "0.10.0"' "$GRADLE"
+
+          echo 'OK: comunicação da 0.9.3 preservada + auto-start validado.'
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -33,11 +71,11 @@ jobs:
 
       - name: Renomear APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.9.1.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.10.0-debug.apk
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Conecta-Midia-Player-0.9.1-APK
-          path: Conecta-Midia-Player-0.9.1.apk
+          name: Conecta-Midia-Player-0.10.0-APK
+          path: Conecta-Midia-Player-0.10.0-debug.apk
           if-no-files-found: error
