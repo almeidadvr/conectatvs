@@ -36,30 +36,16 @@
         <ImageView
             android:id="@+id/brandLogo"
             android:layout_width="190dp"
-            android:layout_height="76dp"
+            android:layout_height="58dp"
             android:adjustViewBounds="true"
             android:scaleType="fitCenter"
             android:contentDescription="Conecta Soluções" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Player para Android TV"
-            android:textColor="#D5E7F8"
-            android:textSize="10sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Código deste dispositivo"
-            android:textColor="#AFC7DF"
-            android:textSize="9sp" />
-
-        <TextView
             android:id="@+id/codeText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="-5dp"
             android:text="000 000"
             android:textColor="#E6F4FF"
             android:textStyle="bold"
