@@ -12,7 +12,7 @@ if start < 0 or end < 0:
 
 new = '''    private fun resolveServer(raw: String): String? {
         val cleaned = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
-        val hasPort = Regex(":\\d+$").containsMatchIn(cleaned)
+        val hasPort = Regex(""":\\d+$""").containsMatchIn(cleaned)
         // O Console pode mudar de porta entre versões. Procura uma faixa mais ampla,
         // incluindo 8799 usada pelo Console 0.9.2.
         val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8810).map { "http://$cleaned:$it" }
