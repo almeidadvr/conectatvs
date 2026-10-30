@@ -4,7 +4,6 @@ main = Path('app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt')
 gradle = Path('app/build.gradle.kts')
 s = main.read_text(encoding='utf-8')
 
-# Troca descoberta antiga pela API unificada /api/state do Console 0.9.2.x.
 start = s.find('    private fun resolveServer(raw: String): String? {')
 end = s.find('    private suspend fun connectivityLoop()', start)
 if start < 0 or end < 0:
@@ -13,7 +12,6 @@ if start < 0 or end < 0:
 new_resolve = '''    private fun resolveServer(raw: String): String? {
         val cleaned = raw.removePrefix("http://").removePrefix("https://").trimEnd('/')
         val hasPort = Regex(Regex.escape(":" ) + "[0-9]+$").containsMatchIn(cleaned)
-        // Console 0.9.2.x usa 8799, mas mantemos uma faixa para instalações antigas.
         val candidates = if (hasPort) listOf("http://$cleaned") else (8787..8810).map { "http://$cleaned:$it" }
         for (candidate in candidates) {
             try {
@@ -27,7 +25,6 @@ new_resolve = '''    private fun resolveServer(raw: String): String? {
 '''
 s = s[:start] + new_resolve + s[end:]
 
-# Substitui o loop de conectividade até getTimedConfig pela leitura de /api/state.
 start = s.find('    private suspend fun connectivityLoop() {')
 end = s.find('    private fun getTimedConfig(', start)
 if start < 0 or end < 0:
@@ -59,7 +56,6 @@ new_loop = '''    private suspend fun connectivityLoop() {
     }
 
     private suspend fun applyStateConfig(cfg: JSONObject, rttMs: Long) {
-        // Compatibilidade com as duas assinaturas geradas pelas versões anteriores.
         val midpoint = System.currentTimeMillis()
         val serverTime = cfg.optLong("serverTimeMs", midpoint)
         val offset = serverTime - midpoint
@@ -100,7 +96,6 @@ new_loop = '''    private suspend fun connectivityLoop() {
             }
         }
 
-        // Fallback: encontra playlist ativa dirigida à TV ou a um de seus grupos.
         if (selected == null) {
             for (i in 0 until playlists.length()) {
                 val p = playlists.optJSONObject(i) ?: continue
@@ -155,19 +150,27 @@ new_loop = '''    private suspend fun connectivityLoop() {
 '''
 s = s[:start] + new_loop + s[end:]
 
-# A versão 0.8.7 mudou applyConfig para 3 parâmetros. Garante essa assinatura.
 if 'private suspend fun applyConfig(cfg: JSONObject, measuredOffsetMs: Long, measuredRttMs: Long)' not in s:
     s = s.replace(
         'private suspend fun applyConfig(cfg: JSONObject, measuredOffsetMs: Long)',
         'private suspend fun applyConfig(cfg: JSONObject, measuredOffsetMs: Long, measuredRttMs: Long)'
     )
 
-# Evita heartbeat antigo /api/player/heartbeat (não existe no Console 0.9.2.x).
+# Remove chamadas aos endpoints legados, mas preserva os métodos esperados pelo restante do player.
 ph_start = s.find('    private fun postHeartbeat() {')
 if ph_start >= 0:
     ph_end = s.find('    override fun onKeyDown', ph_start)
     if ph_end > ph_start:
-        s = s[:ph_start] + '    private fun postHeartbeat() { /* API 0.9.2 usa estado unificado; heartbeat legado desativado. */ }\n\n' + s[ph_end:]
+        compatibility = '''    private fun postHeartbeat() {
+        // Console 0.9.2.x expõe estado unificado; heartbeat legado desativado.
+    }
+
+    private fun reportProof(item: PlaylistItem) {
+        // Endpoint legado /api/player/proof não é usado nesta integração.
+    }
+
+'''
+        s = s[:ph_start] + compatibility + s[ph_end:]
 
 main.write_text(s, encoding='utf-8')
 
