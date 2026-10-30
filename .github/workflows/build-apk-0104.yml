@@ -66,8 +66,9 @@ jobs:
           assert b[12:16] == b'IHDR', 'IHDR ausente'
           w,h,bit_depth,color_type = struct.unpack('>IIBB', b[16:26])
           assert w > 100 and h > 30, f'dimensões inválidas: {w}x{h}'
-          assert color_type in (4,6), f'PNG sem canal alpha: color type {color_type}'
-          print(f'LOGO OK: PNG {w}x{h}, alpha presente, {len(b)} bytes')
+          has_transparency = color_type in (4,6) or (color_type == 3 and b'tRNS' in b)
+          assert has_transparency, f'PNG sem transparência: color type {color_type}'
+          print(f'LOGO OK: PNG {w}x{h}, transparência confirmada, {len(b)} bytes')
           PY
           grep -q 'setImageResource(R.drawable.logo_conecta_transparente)' "$FILE"
           ! grep -q 'brandLogo.visibility=View.GONE' "$FILE"
@@ -103,7 +104,7 @@ jobs:
 
           grep -q 'versionName = "0.10.4"' "$GRADLE"
           grep -q 'versionCode = 34' "$GRADLE"
-          echo 'VALIDAÇÃO 0.10.4 CONCLUÍDA: landscape correto, logo PNG real, textos removidos, fundo e Wi-Fi preservados, protocolo e auto-start intactos.'
+          echo 'VALIDAÇÃO 0.10.4 CONCLUÍDA: landscape correto, logo PNG transparente real, textos removidos, fundo e Wi-Fi preservados, protocolo e auto-start intactos.'
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
