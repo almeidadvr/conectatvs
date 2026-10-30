@@ -1,0 +1,142 @@
+name: Gerar APK Conecta Mídia 0.10.4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ player-0.10.0-functional-093-autostart ]
+    paths:
+      - 'app/src/main/res/layout/activity_main.xml'
+      - 'app/src/main/res/layout-land/activity_main.xml'
+      - 'app/src/main/res/drawable/player_background.xml'
+      - 'app/src/main/res/drawable/panel_bg_new.xml'
+      - 'app/src/main/res/drawable/ic_wifi_modern.xml'
+      - 'app/src/main/res/drawable/logo_conecta_transparente.png'
+      - 'app/build.gradle.kts'
+      - 'tools/patch_0104_logo_runtime.py'
+      - '.github/workflows/build-apk-0104.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Aplicar somente correção segura da logo em runtime
+        run: python tools/patch_0104_logo_runtime.py
+
+      - name: Validar visual REAL da TV landscape e protocolo funcional
+        shell: bash
+        run: |
+          set -e
+          FILE=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          LAND=app/src/main/res/layout-land/activity_main.xml
+          LAYOUT=app/src/main/res/layout/activity_main.xml
+          LOGO=app/src/main/res/drawable/logo_conecta_transparente.png
+          BG=app/src/main/res/drawable/player_background.xml
+          WIFI=app/src/main/res/drawable/ic_wifi_modern.xml
+          BOOT=app/src/main/java/com/conectasolucoes/conectasign/BootReceiver.kt
+          MANIFEST=app/src/main/AndroidManifest.xml
+          GRADLE=app/build.gradle.kts
+
+          echo '--- VALIDANDO LAYOUT REAL USADO PELA TV (layout-land) ---'
+          test -f "$LAND"
+          ! grep -q 'Player para Android TV' "$LAND"
+          ! grep -q 'Código deste dispositivo' "$LAND"
+          grep -q 'android:id="@+id/brandLogo"' "$LAND"
+          grep -q 'android:id="@+id/codeText"' "$LAND"
+          grep -q 'android:layout_marginTop="-5dp"' "$LAND"
+          grep -q 'android:src="@drawable/ic_wifi_modern"' "$LAND"
+
+          echo '--- VALIDANDO LAYOUT PADRÃO ---'
+          ! grep -q 'Player para Android TV' "$LAYOUT"
+          ! grep -q 'Código deste dispositivo' "$LAYOUT"
+          grep -q 'android:id="@+id/brandLogo"' "$LAYOUT"
+          grep -q 'android:src="@drawable/ic_wifi_modern"' "$LAYOUT"
+
+          echo '--- VALIDANDO LOGO REAL ---'
+          test -f "$LOGO"
+          test $(wc -c < "$LOGO") -gt 4000
+          python - <<'PY'
+          from pathlib import Path
+          import struct
+          p=Path('app/src/main/res/drawable/logo_conecta_transparente.png')
+          b=p.read_bytes()
+          assert b[:8] == b'\x89PNG\r\n\x1a\n', 'logo não é PNG real'
+          assert b[12:16] == b'IHDR', 'IHDR ausente'
+          w,h,bit_depth,color_type = struct.unpack('>IIBB', b[16:26])
+          assert w > 100 and h > 30, f'dimensões inválidas: {w}x{h}'
+          assert color_type in (4,6), f'PNG sem canal alpha: color type {color_type}'
+          print(f'LOGO OK: PNG {w}x{h}, alpha presente, {len(b)} bytes')
+          PY
+          grep -q 'setImageResource(R.drawable.logo_conecta_transparente)' "$FILE"
+          ! grep -q 'brandLogo.visibility=View.GONE' "$FILE"
+
+          echo '--- VALIDANDO FUNDO E WI-FI APROVADOS ---'
+          grep -q '#07175E' "$BG"
+          grep -q '#101D82' "$BG"
+          grep -q '#16C8FF' "$BG"
+          grep -q '#31DFFF' "$WIFI"
+
+          echo '--- VALIDANDO PROTOCOLO FUNCIONAL DA 0.9.3/0.10.0 ---'
+          grep -q ':8799' "$FILE"
+          grep -q '/api/state' "$FILE"
+          grep -q '/api/tvs' "$FILE"
+          grep -q 'playSequence' "$FILE"
+          grep -q 'currentMediaId' "$FILE"
+          grep -q 'currentPlaylistId' "$FILE"
+          grep -q 'wifiRssi' "$FILE"
+          grep -q 'manufacturer' "$FILE"
+          grep -q 'androidVersion' "$FILE"
+          if grep -q '/api/player/config' "$FILE"; then echo 'ERRO: player/config detectado'; exit 1; fi
+          if grep -q '/api/player/heartbeat' "$FILE"; then echo 'ERRO: heartbeat experimental detectado'; exit 1; fi
+          if grep -q '/api/player/proof' "$FILE"; then echo 'ERRO: proof experimental detectado'; exit 1; fi
+
+          echo '--- VALIDANDO AUTO-START ---'
+          grep -q 'BOOT_COMPLETED' "$BOOT"
+          grep -q 'LOCKED_BOOT_COMPLETED' "$BOOT"
+          grep -q 'MY_PACKAGE_REPLACED' "$BOOT"
+          grep -q 'QUICKBOOT_POWERON' "$BOOT"
+          grep -q 'setAndAllowWhileIdle' "$BOOT"
+          grep -q 'directBootAware="true"' "$MANIFEST"
+          grep -q 'launchMode="singleTask"' "$MANIFEST"
+
+          grep -q 'versionName = "0.10.4"' "$GRADLE"
+          grep -q 'versionCode = 34' "$GRADLE"
+          echo 'VALIDAÇÃO 0.10.4 CONCLUÍDA: landscape correto, logo PNG real, textos removidos, fundo e Wi-Fi preservados, protocolo e auto-start intactos.'
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK 35
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Configurar Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar APK debug
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Verificar APK gerado
+        shell: bash
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'resources.arsc'
+          echo "APK OK: $(stat -c%s app/build/outputs/apk/debug/app-debug.apk) bytes"
+
+      - name: Renomear APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Conecta-Midia-Player-0.10.4-debug.apk
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conecta-Midia-Player-0.10.4-APK
+          path: Conecta-Midia-Player-0.10.4-debug.apk
+          if-no-files-found: error
