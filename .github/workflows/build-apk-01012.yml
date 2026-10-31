@@ -1,0 +1,108 @@
+name: Gerar APK Conecta Mídia 0.10.12 Sync Diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ player-0.10.0-functional-093-autostart ]
+    paths:
+      - 'tools/patch_01012_sync_diagnostics_and_clock.py'
+      - '.github/workflows/build-apk-01012.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar base funcional 0.10.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          G=app/build.gradle.kts
+          M=app/src/main/AndroidManifest.xml
+          B=app/src/main/java/com/conectasolucoes/conectasign/BootReceiver.kt
+          grep -q ':8799' "$F"
+          grep -q '/api/state' "$F"
+          grep -q '/api/tvs' "$F"
+          grep -q 'versionCode = 36' "$G"
+          grep -q 'versionName = "0.10.6"' "$G"
+          grep -q 'BOOT_COMPLETED' "$M"
+          grep -q 'setAndAllowWhileIdle' "$B"
+
+      - name: Aplicar cadeia 0.10.6 a 0.10.11
+        run: |
+          python tools/patch_0106_layout.py
+          python tools/patch_0106_logo_sync.py
+          python tools/patch_0107_auto_group_sync.py
+          python tools/patch_0108_heartbeat_multi_tv.py
+          python tools/patch_0109_stable_tv_identity.py
+          python tools/patch_01010_restore_heartbeat_contract.py
+          python tools/patch_01011_main_thread_heartbeat.py
+
+      - name: Aplicar correção e diagnóstico 0.10.12
+        run: python tools/patch_01012_sync_diagnostics_and_clock.py
+
+      - name: Validar lógica antes da compilação
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          G=app/build.gradle.kts
+          grep -q 'val now=synchronizedNowMs()' "$F"
+          grep -q 'OffsetDateTime.parse(peer.optString("lastSeen"))' "$F"
+          grep -q 'syncEligible' "$F"
+          grep -q 'syncReason' "$F"
+          grep -q 'syncTargetMediaId' "$F"
+          grep -q 'syncTargetOffsetMs' "$F"
+          grep -q 'syncLocalPositionMs' "$F"
+          grep -q 'syncError' "$F"
+          grep -q 'syncClockNowMs' "$F"
+          grep -q 'deviceClockNowMs' "$F"
+          grep -q 'versionCode = 42' "$G"
+          grep -q 'versionName = "0.10.12"' "$G"
+          grep -q '/api/state' "$F"
+          grep -q '/api/tvs' "$F"
+          grep -q ':8799' "$F"
+          ! grep -q '/api/player/config' "$F"
+          ! grep -q '/api/player/heartbeat' "$F"
+          ! grep -q '/api/player/proof' "$F"
+          echo 'OK: clock e diagnóstico de sync presentes.'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Validar APK e assinatura
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='42'" /tmp/badging.txt
+          grep -q "versionName='0.10.12'" /tmp/badging.txt
+          cp "$APK" Conecta-Midia-Player-0.10.12-debug.apk
+          sha256sum Conecta-Midia-Player-0.10.12-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Conecta-Midia-Player-0.10.12-APK
+          path: Conecta-Midia-Player-0.10.12-debug.apk
+          if-no-files-found: error
