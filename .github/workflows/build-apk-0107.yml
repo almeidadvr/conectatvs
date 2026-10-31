@@ -1,0 +1,129 @@
+name: Gerar APK Conecta Mídia 0.10.7 Auto Sync
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ player-0.10.0-functional-093-autostart ]
+    paths:
+      - 'tools/patch_0107_auto_group_sync.py'
+      - '.github/workflows/build-apk-0107.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar base funcional antes das mudanças
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          G=app/build.gradle.kts
+          M=app/src/main/AndroidManifest.xml
+          B=app/src/main/java/com/conectasolucoes/conectasign/BootReceiver.kt
+          grep -q ':8799' "$F"
+          grep -q '/api/state' "$F"
+          grep -q '/api/tvs' "$F"
+          grep -q 'playSequence' "$F"
+          grep -q 'currentMediaId' "$F"
+          grep -q 'currentPlaylistId' "$F"
+          grep -q 'wifiRssi' "$F"
+          ! grep -q '/api/player/config' "$F"
+          ! grep -q '/api/player/heartbeat' "$F"
+          ! grep -q '/api/player/proof' "$F"
+          grep -q 'versionCode = 36' "$G"
+          grep -q 'versionName = "0.10.6"' "$G"
+          grep -q 'BOOT_COMPLETED' "$M"
+          grep -q 'LOCKED_BOOT_COMPLETED' "$M"
+          grep -q 'MY_PACKAGE_REPLACED' "$M"
+          grep -q 'setAndAllowWhileIdle' "$B"
+          echo 'OK: base funcional 0.10.6 preservada antes do patch.'
+
+      - name: Aplicar correções visuais e lógica de sincronização já validada da 0.10.6
+        run: |
+          python tools/patch_0106_layout.py
+          python tools/patch_0106_logo_sync.py
+
+      - name: Converter para sincronização automática grupo + playlist
+        run: python tools/patch_0107_auto_group_sync.py
+
+      - name: Validar código antes da compilação
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          G=app/build.gradle.kts
+          LAND=app/src/main/res/layout-land/activity_main.xml
+          LOGO=app/src/main/res/drawable/logo_conecta_transparente.png
+          grep -q 'autoSyncEligible' "$F"
+          grep -q 'getStateWithClock' "$F"
+          grep -q 'DateTimeFormatter.RFC_1123_DATE_TIME' "$F"
+          grep -q 'currentPlaylistId' "$F"
+          grep -q 'groupIds' "$F"
+          grep -q 'syncDriftMs' "$F"
+          grep -q 'syncRttMs' "$F"
+          grep -q 'serverClockOffsetMs' "$F"
+          grep -q 'drift>650L' "$F"
+          grep -q ':8799' "$F"
+          grep -q '/api/state' "$F"
+          grep -q '/api/tvs' "$F"
+          ! grep -q '__conecta_sync__' "$F"
+          ! grep -q 'serverTimeMs' "$F"
+          ! grep -q 'syncAnchorMs' "$F"
+          ! grep -q '/api/player/config' "$F"
+          ! grep -q '/api/player/heartbeat' "$F"
+          ! grep -q '/api/player/proof' "$F"
+          grep -q 'setImageResource(R.drawable.logo_conecta_transparente)' "$F"
+          ! grep -q 'brandLogo.visibility=View.GONE' "$F"
+          grep -q 'android:src="@drawable/logo_conecta_transparente"' "$LAND"
+          test -s "$LOGO"
+          grep -q 'versionCode = 37' "$G"
+          grep -q 'versionName = "0.10.7"' "$G"
+          echo 'OK: grupo+playlist, relógio HTTP, telemetria, logo e protocolo validados.'
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK 35
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Configurar Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Validar APK compilado e assinatura
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'resources.arsc'
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='37'" /tmp/badging.txt
+          grep -q "versionName='0.10.7'" /tmp/badging.txt
+          cp "$APK" Conecta-Midia-Player-0.10.7-debug.apk
+          sha256sum Conecta-Midia-Player-0.10.7-debug.apk
+          echo 'OK: APK íntegro, assinado e versão confirmada.'
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conecta-Midia-Player-0.10.7-APK
+          path: Conecta-Midia-Player-0.10.7-debug.apk
+          if-no-files-found: error
