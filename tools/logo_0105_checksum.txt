@@ -1,0 +1,1 @@
+351388ce70cfabe842c37105d5b3b05bdeb7c71377cdcdacde2e04d3a66b4b0b  app/src/main/res/drawable/logo_conecta_transparente.png
