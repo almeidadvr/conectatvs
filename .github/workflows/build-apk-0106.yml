@@ -1,0 +1,148 @@
+name: Gerar APK Conecta Mídia 0.10.6 Logo + Sync
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ player-0.10.0-functional-093-autostart ]
+    paths:
+      - 'tools/patch_0106_logo_sync.py'
+      - 'tools/patch_0106_layout.py'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/build-apk-0106.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar base funcional antes das mudanças
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          LAND=app/src/main/res/layout-land/activity_main.xml
+          MAN=app/src/main/AndroidManifest.xml
+          BOOT=app/src/main/java/com/conectasolucoes/conectasign/BootReceiver.kt
+          grep -q ':8799' "$FILE"
+          grep -q '/api/state' "$FILE"
+          grep -q '/api/tvs' "$FILE"
+          grep -q 'playSequence' "$FILE"
+          grep -q 'currentMediaId' "$FILE"
+          grep -q 'currentPlaylistId' "$FILE"
+          grep -q 'wifiRssi' "$FILE"
+          ! grep -q '/api/player/config' "$FILE"
+          ! grep -q '/api/player/heartbeat' "$FILE"
+          ! grep -q '/api/player/proof' "$FILE"
+          grep -q 'android:id="@+id/brandLogo"' "$LAND"
+          grep -q 'android:layout_width="190dp"' "$LAND"
+          grep -q 'android:layout_height="58dp"' "$LAND"
+          grep -q 'android:layout_marginTop="-5dp"' "$LAND"
+          grep -q 'android:src="@drawable/ic_wifi_modern"' "$LAND"
+          ! grep -q 'Player para Android TV' "$LAND"
+          ! grep -q 'Código deste dispositivo' "$LAND"
+          grep -q 'BOOT_COMPLETED' "$MAN"
+          grep -q 'LOCKED_BOOT_COMPLETED' "$MAN"
+          grep -q 'MY_PACKAGE_REPLACED' "$MAN"
+          grep -q 'directBootAware="true"' "$MAN"
+          grep -q 'launchMode="singleTask"' "$MAN"
+          grep -q 'setAndAllowWhileIdle' "$BOOT"
+          echo 'OK pré-build: protocolo, layout e auto-start da base funcional confirmados.'
+
+      - name: Aplicar logo estática e sincronização opcional
+        run: |
+          python tools/patch_0106_layout.py
+          python tools/patch_0106_logo_sync.py
+
+      - name: Validar código modificado antes de compilar
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          LAND=app/src/main/res/layout-land/activity_main.xml
+          DEF=app/src/main/res/layout/activity_main.xml
+          LOGO=app/src/main/res/drawable/logo_conecta_transparente.png
+          GRADLE=app/build.gradle.kts
+          test -s "$LOGO"
+          python - <<'PY'
+          from pathlib import Path
+          b=Path('app/src/main/res/drawable/logo_conecta_transparente.png').read_bytes()
+          assert b[:8]==b'\x89PNG\r\n\x1a\n', 'logo não é PNG válido'
+          assert len(b)>4000, 'logo suspeitamente pequena'
+          print('Logo PNG:',len(b),'bytes')
+          PY
+          for X in "$LAND" "$DEF"; do
+            grep -q 'android:id="@+id/brandLogo"' "$X"
+            grep -q 'android:src="@drawable/logo_conecta_transparente"' "$X"
+            ! grep -q 'Player para Android TV' "$X"
+            ! grep -q 'Código deste dispositivo' "$X"
+          done
+          grep -q 'setImageResource(R.drawable.logo_conecta_transparente)' "$FILE"
+          grep -q 'brandLogo.visibility=View.VISIBLE' "$FILE"
+          ! grep -q 'brandLogo.visibility=View.GONE' "$FILE"
+          ! grep -q 'R.raw.logo_conecta_base64' "$FILE"
+          ! grep -q 'Base64.decode' "$FILE"
+          grep -q 'tvSyncEnabled' "$FILE"
+          grep -q '__conecta_sync__' "$FILE"
+          grep -q 'serverTimeMs' "$FILE"
+          grep -q 'syncAnchorMs' "$FILE"
+          grep -q 'syncPlayback' "$FILE"
+          grep -q 'timelinePosition' "$FILE"
+          grep -q 'drift>650L' "$FILE"
+          grep -q 'syncRttMs' "$FILE"
+          grep -q 'serverClockOffsetMs' "$FILE"
+          grep -q ':8799' "$FILE"
+          grep -q '/api/state' "$FILE"
+          grep -q '/api/tvs' "$FILE"
+          ! grep -q '/api/player/config' "$FILE"
+          ! grep -q '/api/player/heartbeat' "$FILE"
+          ! grep -q '/api/player/proof' "$FILE"
+          grep -q 'versionName = "0.10.6"' "$GRADLE"
+          grep -q 'versionCode = 36' "$GRADLE"
+          echo 'OK pré-compilação: logo, sync ON/OFF e protocolo funcional validados.'
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK 35
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Configurar Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Validar APK compilado e assinatura
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'resources.arsc'
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='36'" /tmp/badging.txt
+          grep -q "versionName='0.10.6'" /tmp/badging.txt
+          cp "$APK" Conecta-Midia-Player-0.10.6-debug.apk
+          sha256sum Conecta-Midia-Player-0.10.6-debug.apk
+          echo 'OK pós-build: APK íntegro, assinado e versão confirmada.'
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conecta-Midia-Player-0.10.6-APK
+          path: Conecta-Midia-Player-0.10.6-debug.apk
+          if-no-files-found: error
