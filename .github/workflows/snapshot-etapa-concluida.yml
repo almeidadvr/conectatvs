@@ -1,0 +1,43 @@
+name: Snapshot Conecta Mídia - Etapa Concluída
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ player-0.10.0-functional-093-autostart ]
+    paths:
+      - 'MARCO_ETAPA_1_2026-11-01.md'
+      - '.github/workflows/snapshot-etapa-concluida.yml'
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar marco do Player
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f tools/patch_01013_safe_cache_cleanup.py
+          test -f .github/workflows/build-apk-01013.yml
+          grep -q 'versionName = "0.10.6"' app/build.gradle.kts
+          grep -q ':8799' app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          echo "Commit snapshot: $(git rev-parse HEAD)"
+
+      - name: Criar pacote de código-fonte reproduzível
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p snapshot
+          git archive --format=zip --output=snapshot/Conecta-Midia-Codigo-Fonte-Etapa-1.zip HEAD
+          sha256sum snapshot/Conecta-Midia-Codigo-Fonte-Etapa-1.zip > snapshot/SHA256-CODIGO-FONTE.txt
+          git rev-parse HEAD > snapshot/COMMIT.txt
+          git branch --show-current > snapshot/BRANCH.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Conecta-Midia-Snapshot-Codigo-Fonte-Etapa-1
+          path: snapshot/
+          if-no-files-found: error
