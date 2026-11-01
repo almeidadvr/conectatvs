@@ -1,0 +1,104 @@
+name: Gerar Player Conecta Mídia 0.11.0 Etapa 2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ etapa-2-melhorias ]
+    paths:
+      - 'tools/patch_0110_etapa2_features.py'
+      - '.github/workflows/build-player-0110-etapa2.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar base funcional
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          test -f tools/patch_01013_safe_cache_cleanup.py
+          grep -q 'versionCode = 36' app/build.gradle.kts
+          grep -q ':8799' app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          grep -q 'BOOT_COMPLETED' app/src/main/AndroidManifest.xml
+
+      - name: Materializar Player 0.10.13
+        run: |
+          python tools/patch_0106_layout.py
+          python tools/patch_0106_logo_sync.py
+          python tools/patch_0107_auto_group_sync.py
+          python tools/patch_0108_heartbeat_multi_tv.py
+          python tools/patch_0109_stable_tv_identity.py
+          python tools/patch_01010_restore_heartbeat_contract.py
+          python tools/patch_01011_main_thread_heartbeat.py
+          python tools/patch_01012_sync_diagnostics_and_clock.py
+          python tools/patch_01013_safe_cache_cleanup.py
+
+      - name: Aplicar Etapa 2 Player 0.11.0
+        run: python tools/patch_0110_etapa2_features.py
+
+      - name: Validar funcionalidades Etapa 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=app/src/main/java/com/conectasolucoes/conectasign/MainActivity.kt
+          G=app/build.gradle.kts
+          M=app/src/main/AndroidManifest.xml
+          grep -q 'predownloadApplicable' "$F"
+          grep -q 'readyStatus' "$F"
+          grep -q 'readyPercent' "$F"
+          grep -q 'handlePlaybackError' "$F"
+          grep -q 'pollAndExecuteCommands' "$F"
+          grep -q 'startPlayerUpdate' "$F"
+          grep -q '/api/v2/events' "$F"
+          grep -q '/api/v2/proof' "$F"
+          grep -q '/api/v2/commands' "$F"
+          grep -q 'FileProvider' "$F"
+          grep -q 'REQUEST_INSTALL_PACKAGES' "$M"
+          test -f app/src/main/res/xml/file_paths.xml
+          grep -q 'versionCode = 50' "$G"
+          grep -q 'versionName = "0.11.0"' "$G"
+          grep -q '/api/state' "$F"
+          grep -q '/api/tvs' "$F"
+          grep -q ':8799' "$F"
+          grep -q ':8800' "$F"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Validar APK e assinatura
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='50'" /tmp/badging.txt
+          grep -q "versionName='0.11.0'" /tmp/badging.txt
+          cp "$APK" Conecta-Midia-Player-0.11.0-Etapa2-debug.apk
+          sha256sum Conecta-Midia-Player-0.11.0-Etapa2-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Conecta-Midia-Player-0.11.0-Etapa2
+          path: Conecta-Midia-Player-0.11.0-Etapa2-debug.apk
+          if-no-files-found: error
